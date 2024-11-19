@@ -8,6 +8,11 @@
 
 namespace ndfex {
 
+    class OrderNotFoundException : public std::runtime_error {
+    public:
+        explicit OrderNotFoundException(const std::string& message) : std::runtime_error(message) {}
+    };
+
     enum class Side : uint8_t {
         Buy = 1,
         Sell = 0
@@ -129,7 +134,7 @@ namespace ndfex {
         auto it = orders.find(order_id);
         if (it == orders.end()) {
             // order does not exist
-            throw std::runtime_error("Order " + std::to_string(order_id) + " does not exist");
+            throw OrderNotFoundException("Order " + std::to_string(order_id) + " does not exist");
         }
 
         PriceLevel& price_level = price_levels[it->second.price];
@@ -166,7 +171,7 @@ namespace ndfex {
         auto it = orders.find(order_id);
         if (it == orders.end()) {
             // order does not exist
-            throw std::runtime_error("Order " + std::to_string(order_id) + " does not exist");
+            throw OrderNotFoundException("Order " + std::to_string(order_id) + " does not exist");
         }
 
         uint32_t price = it->second.price;
