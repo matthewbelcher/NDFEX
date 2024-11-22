@@ -9,7 +9,7 @@ public:
     std::vector<uint64_t> deleted_orders;
     std::vector<std::tuple<uint64_t, uint32_t, uint32_t>> trades;
 
-    void onNewOrder(uint64_t order_id, uint8_t side, uint32_t quantity, uint32_t price, uint8_t flags) {
+    void onNewOrder(uint64_t order_id, uint32_t symbol, uint8_t side, uint32_t quantity, uint32_t price, uint8_t flags) {
         new_orders.push_back(order_id);
     }
 
@@ -24,7 +24,7 @@ public:
 
 TEST(OrderLadderTest, NewOrder) {
     MockSubscriber subscriber;
-    ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber);
+    ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber, 1337);
 
     orderLadder.new_order(1, ndfex::Side::Sell, 10, 50, 0);
 
@@ -34,7 +34,7 @@ TEST(OrderLadderTest, NewOrder) {
 
 TEST(OrderLadderTest, DeleteOrder) {
     MockSubscriber subscriber;
-    ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber);
+    ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber, 1337);
 
     orderLadder.new_order(1, ndfex::Side::Sell, 10, 50, 0);
     orderLadder.delete_order(1);
@@ -45,7 +45,7 @@ TEST(OrderLadderTest, DeleteOrder) {
 
 TEST(OrderLadderTest, SimpleCrossTrade) {
     MockSubscriber subscriber;
-    ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber);
+    ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber, 1337);
 
     orderLadder.new_order(1, ndfex::Side::Buy, 10, 50, 0); // Buy order
     orderLadder.new_order(2, ndfex::Side::Sell, 10, 50, 0); // Sell order
@@ -59,7 +59,7 @@ TEST(OrderLadderTest, SimpleCrossTrade) {
 TEST(OrderLadderTest, CrossMultipleLevels) {
     MockSubscriber subscriber;
 
-    ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber);
+    ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber, 1337);
 
     orderLadder.new_order(1, ndfex::Side::Buy, 10, 50, 0); // Buy order at 50
     orderLadder.new_order(2, ndfex::Side::Buy, 10, 55, 0); // Buy order at 55
@@ -83,7 +83,7 @@ TEST(OrderLadderTest, CrossMultipleLevels) {
 
 TEST(OrderLadderTest, VeryComplicatedTest) {
     MockSubscriber subscriber;
-    ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber);
+    ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber, 1337);
 
     // Add 10 buy orders
     for (uint64_t i = 1; i <= 10; ++i) {

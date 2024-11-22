@@ -2,8 +2,8 @@
 
 #include <cstdint>
 
-static char* go_irish = "GOIRISH!"; // 8 bytes
-static const uint32_t MAGIC_NUMBER = *reinterpret_cast<uint32_t*>(go_irish);
+static std::string go_irish = "GOIRISH!"; // 8 bytes
+static const uint64_t MAGIC_NUMBER = *reinterpret_cast<const uint64_t*>(go_irish.c_str());
 
 enum class MSG_TYPE: uint8_t {
     NEW_ORDER = 1,
@@ -19,7 +19,7 @@ enum class SIDE: uint8_t {
 };
 
 struct md_header {
-    uint32_t magic_number;
+    uint64_t magic_number;
     uint16_t length;
     uint32_t seq_num;
     uint64_t timestamp;

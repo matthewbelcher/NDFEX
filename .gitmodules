@@ -1,0 +1,3 @@
+[submodule "SPSCQueue"]
+	path = SPSCQueue
+	url = git@github.com:rigtorp/SPSCQueue.git

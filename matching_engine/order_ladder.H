@@ -52,9 +52,10 @@ namespace ndfex {
         std::map<uint32_t, PriceLevel, std::less<uint32_t>> sell_levels;
 
         Subscriber* const subscriber;
+        const uint32_t symbol;
 
     public:
-        OrderLadder(Subscriber* subscriber);
+        OrderLadder(Subscriber* subscriber, uint32_t symbol) : subscriber(subscriber), symbol(symbol) {};
 
         ~OrderLadder() = default;
 
@@ -76,11 +77,6 @@ namespace ndfex {
         template <typename PriceLevels>
         void handle_delete_order(uint64_t order_id, PriceLevels& price_levels);
     };
-
-    template <typename Subscriber>
-    OrderLadder<Subscriber>::OrderLadder(Subscriber* subscriber) : subscriber(subscriber) {
-        // Constructor implementation
-    }
 
     template <typename Subscriber>
     template <typename PriceLevels>
@@ -125,7 +121,7 @@ namespace ndfex {
             it->second.tail = &orders[order_id];
         }
 
-        subscriber->onNewOrder(order_id, static_cast<uint8_t>(side), quantity, price, flags);
+        subscriber->onNewOrder(order_id, symbol, static_cast<uint8_t>(side), quantity, price, flags);
     }
 
     template <typename Subscriber>
@@ -190,7 +186,20 @@ namespace ndfex {
 
     template <typename Subscriber>
     void OrderLadder<Subscriber>::modify_order(uint64_t order_id, Side side, uint32_t quantity, uint32_t price) {
-        // Function implementation
+        auto it = orders.find(order_id);
+        if (it == orders.end()) {
+            // order does not exist
+            throw OrderNotFoundException("Order " + std::to_string(order_id) + " does not exist");
+        }
+
+        if (it->second.price == price && it->second.side == side) {
+            // price has not changed
+            it->second.quantity = quantity;
+            return;
+        }
+
+        delete_order(order_id);
+        new_order(order_id, side, quantity, price, it->second.flags);
     }
 
     template <typename Subscriber>
