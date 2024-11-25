@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+
+namespace ndfex::md {
 
 static std::string go_irish = "GOIRISH!"; // 8 bytes
 static const uint64_t MAGIC_NUMBER = *reinterpret_cast<const uint64_t*>(go_irish.c_str());
@@ -14,8 +17,8 @@ enum class MSG_TYPE: uint8_t {
 };
 
 enum class SIDE: uint8_t {
-    BUY = 1,
-    SELL = 2,
+    BUY = 0,
+    SELL = 1,
 };
 
 struct md_header {
@@ -73,3 +76,6 @@ struct trade_summary {
 
 } __attribute__((packed));
 
+static const uint16_t MAX_MSG_SIZE = std::max(sizeof(new_order), std::max(sizeof(delete_order), std::max(sizeof(modify_order), std::max(sizeof(trade), sizeof(trade_summary)))));
+
+} // namespace ndfex::md

@@ -30,3 +30,15 @@
 *.exe
 *.out
 *.app
+
+# Ignore compiled binaries and object files
+*.o
+*.out
+*.exe
+*.a
+*.so
+*.dylib
+*.dll
+
+# Ignore output directory
+matching_engine/tests/out/

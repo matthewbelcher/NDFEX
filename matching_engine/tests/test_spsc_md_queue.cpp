@@ -3,6 +3,8 @@
 #include <gtest/gtest.h>
 #include "spsc_subscriber.H"
 
+using namespace ndfex;
+using namespace md;
 
 TEST(SPSCSubscriberTest, MDSubscriber) {
     SPSCMDQueue queue(1000);

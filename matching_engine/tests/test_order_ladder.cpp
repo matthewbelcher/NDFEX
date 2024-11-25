@@ -9,7 +9,7 @@ public:
     std::vector<uint64_t> deleted_orders;
     std::vector<std::tuple<uint64_t, uint32_t, uint32_t>> trades;
 
-    void onNewOrder(uint64_t order_id, uint32_t symbol, uint8_t side, uint32_t quantity, uint32_t price, uint8_t flags) {
+    void onNewOrder(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {
         new_orders.push_back(order_id);
     }
 
@@ -26,7 +26,7 @@ TEST(OrderLadderTest, NewOrder) {
     MockSubscriber subscriber;
     ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber, 1337);
 
-    orderLadder.new_order(1, ndfex::Side::Sell, 10, 50, 0);
+    orderLadder.new_order(1, ndfex::md::SIDE::SELL, 10, 50, 0);
 
     ASSERT_EQ(subscriber.new_orders.size(), 1);
     EXPECT_EQ(subscriber.new_orders[0], 1);
@@ -36,7 +36,7 @@ TEST(OrderLadderTest, DeleteOrder) {
     MockSubscriber subscriber;
     ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber, 1337);
 
-    orderLadder.new_order(1, ndfex::Side::Sell, 10, 50, 0);
+    orderLadder.new_order(1, ndfex::md::SIDE::SELL, 10, 50, 0);
     orderLadder.delete_order(1);
 
     ASSERT_EQ(subscriber.deleted_orders.size(), 1);
@@ -47,8 +47,8 @@ TEST(OrderLadderTest, SimpleCrossTrade) {
     MockSubscriber subscriber;
     ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber, 1337);
 
-    orderLadder.new_order(1, ndfex::Side::Buy, 10, 50, 0); // Buy order
-    orderLadder.new_order(2, ndfex::Side::Sell, 10, 50, 0); // Sell order
+    orderLadder.new_order(1, ndfex::md::SIDE::BUY, 10, 50, 0); // BUY order
+    orderLadder.new_order(2, ndfex::md::SIDE::SELL, 10, 50, 0); // SELL order
 
     ASSERT_EQ(subscriber.trades.size(), 1);
     EXPECT_EQ(std::get<0>(subscriber.trades[0]), 1);
@@ -61,11 +61,11 @@ TEST(OrderLadderTest, CrossMultipleLevels) {
 
     ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber, 1337);
 
-    orderLadder.new_order(1, ndfex::Side::Buy, 10, 50, 0); // Buy order at 50
-    orderLadder.new_order(2, ndfex::Side::Buy, 10, 55, 0); // Buy order at 55
-    orderLadder.new_order(3, ndfex::Side::Buy, 10, 60, 0); // Buy order at 60
+    orderLadder.new_order(1, ndfex::md::SIDE::BUY, 10, 50, 0); // BUY order at 50
+    orderLadder.new_order(2, ndfex::md::SIDE::BUY, 10, 55, 0); // BUY order at 55
+    orderLadder.new_order(3, ndfex::md::SIDE::BUY, 10, 60, 0); // BUY order at 60
 
-    orderLadder.new_order(4, ndfex::Side::Sell, 25, 50, 0); // Sell order at 50
+    orderLadder.new_order(4, ndfex::md::SIDE::SELL, 25, 50, 0); // SELL order at 50
 
     ASSERT_EQ(subscriber.trades.size(), 3);
     EXPECT_EQ(std::get<0>(subscriber.trades[0]), 3);
@@ -85,14 +85,14 @@ TEST(OrderLadderTest, VeryComplicatedTest) {
     MockSubscriber subscriber;
     ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber, 1337);
 
-    // Add 10 buy orders
+    // Add 10 BUY orders
     for (uint64_t i = 1; i <= 10; ++i) {
-        orderLadder.new_order(i, ndfex::Side::Buy, 10, 50 + i, 0);
+        orderLadder.new_order(i, ndfex::md::SIDE::BUY, 10, 50 + i, 0);
     }
 
-    // Add 10 sell orders
+    // Add 10 SELL orders
     for (uint64_t i = 11; i <= 20; ++i) {
-        orderLadder.new_order(i, ndfex::Side::Sell, 10, 70 - (i - 10), 0);
+        orderLadder.new_order(i, ndfex::md::SIDE::SELL, 10, 70 - (i - 10), 0);
     }
 
     // Delete some orders
@@ -100,16 +100,16 @@ TEST(OrderLadderTest, VeryComplicatedTest) {
     orderLadder.delete_order(15);
 
     // Add more orders to create matches
-    orderLadder.new_order(21, ndfex::Side::Sell, 15, 55, 0); // Should match with buy orders at 55 and 56
-    orderLadder.new_order(22, ndfex::Side::Buy, 20, 65, 0); // Should match with sell orders at 65 and 64
+    orderLadder.new_order(21, ndfex::md::SIDE::SELL, 15, 55, 0); // Should match with BUY orders at 55 and 56
+    orderLadder.new_order(22, ndfex::md::SIDE::BUY, 20, 65, 0); // Should match with SELL orders at 65 and 64
 
     // Add more orders
     for (uint64_t i = 23; i <= 30; ++i) {
-        orderLadder.new_order(i, ndfex::Side::Buy, 10, 50 + i, 0);
+        orderLadder.new_order(i, ndfex::md::SIDE::BUY, 10, 50 + i, 0);
     }
 
     for (uint64_t i = 31; i <= 40; ++i) {
-        orderLadder.new_order(i, ndfex::Side::Sell, 10, 70 - (i - 30), 0);
+        orderLadder.new_order(i, ndfex::md::SIDE::SELL, 10, 70 - (i - 30), 0);
     }
 
     // Delete some more orders
@@ -120,69 +120,69 @@ TEST(OrderLadderTest, VeryComplicatedTest) {
     EXPECT_THROW(orderLadder.delete_order(25), std::runtime_error);
 
     // Add more orders to create more matches
-    orderLadder.new_order(41, ndfex::Side::Sell, 30, 60, 0); // Should match with buy orders at 60, 59, and 58
-    orderLadder.new_order(42, ndfex::Side::Buy, 25, 70, 0); // Should match with sell orders at 70, 69, and 68
+    orderLadder.new_order(41, ndfex::md::SIDE::SELL, 30, 60, 0); // Should match with BUY orders at 60, 59, and 58
+    orderLadder.new_order(42, ndfex::md::SIDE::BUY, 25, 70, 0); // Should match with SELL orders at 70, 69, and 68
 
     // Verify the trades
     ASSERT_EQ(subscriber.trades.size(), 15);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[0]), 10); // Buy order at 60
+    EXPECT_EQ(std::get<0>(subscriber.trades[0]), 10); // BUY order at 60
     EXPECT_EQ(std::get<1>(subscriber.trades[0]), 10);
     EXPECT_EQ(std::get<2>(subscriber.trades[0]), 60);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[1]), 9); // Buy order at 59
+    EXPECT_EQ(std::get<0>(subscriber.trades[1]), 9); // BUY order at 59
     EXPECT_EQ(std::get<1>(subscriber.trades[1]), 10);
     EXPECT_EQ(std::get<2>(subscriber.trades[1]), 59);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[2]), 8); // Buy order at 58
+    EXPECT_EQ(std::get<0>(subscriber.trades[2]), 8); // BUY order at 58
     EXPECT_EQ(std::get<1>(subscriber.trades[2]), 5);
     EXPECT_EQ(std::get<2>(subscriber.trades[2]), 58);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[3]), 19); // Sell order at 61
+    EXPECT_EQ(std::get<0>(subscriber.trades[3]), 19); // SELL order at 61
     EXPECT_EQ(std::get<1>(subscriber.trades[3]), 10);
     EXPECT_EQ(std::get<2>(subscriber.trades[3]), 61);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[4]), 18); // Sell order at 62
+    EXPECT_EQ(std::get<0>(subscriber.trades[4]), 18); // SELL order at 62
     EXPECT_EQ(std::get<1>(subscriber.trades[4]), 10);
     EXPECT_EQ(std::get<2>(subscriber.trades[4]), 62);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[5]), 17); // Sell order at 63
+    EXPECT_EQ(std::get<0>(subscriber.trades[5]), 17); // SELL order at 63
     EXPECT_EQ(std::get<1>(subscriber.trades[5]), 10);
     EXPECT_EQ(std::get<2>(subscriber.trades[5]), 63);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[6]), 16); // Sell order at 64
+    EXPECT_EQ(std::get<0>(subscriber.trades[6]), 16); // SELL order at 64
     EXPECT_EQ(std::get<1>(subscriber.trades[6]), 10);
     EXPECT_EQ(std::get<2>(subscriber.trades[6]), 64);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[7]), 14); // Sell order at 66
+    EXPECT_EQ(std::get<0>(subscriber.trades[7]), 14); // SELL order at 66
     EXPECT_EQ(std::get<1>(subscriber.trades[7]), 10);
     EXPECT_EQ(std::get<2>(subscriber.trades[7]), 66);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[8]), 13); // Sell order at 67
+    EXPECT_EQ(std::get<0>(subscriber.trades[8]), 13); // SELL order at 67
     EXPECT_EQ(std::get<1>(subscriber.trades[8]), 10);
     EXPECT_EQ(std::get<2>(subscriber.trades[8]), 67);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[9]), 12); // Sell order at 68
+    EXPECT_EQ(std::get<0>(subscriber.trades[9]), 12); // SELL order at 68
     EXPECT_EQ(std::get<1>(subscriber.trades[9]), 10);
     EXPECT_EQ(std::get<2>(subscriber.trades[9]), 68);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[10]), 11); // Sell order at 69
+    EXPECT_EQ(std::get<0>(subscriber.trades[10]), 11); // SELL order at 69
     EXPECT_EQ(std::get<1>(subscriber.trades[10]), 10);
     EXPECT_EQ(std::get<2>(subscriber.trades[10]), 69);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[11]), 30); // Buy order at 80
+    EXPECT_EQ(std::get<0>(subscriber.trades[11]), 30); // BUY order at 80
     EXPECT_EQ(std::get<1>(subscriber.trades[11]), 10);
     EXPECT_EQ(std::get<2>(subscriber.trades[11]), 80);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[12]), 29); // Buy order at 79
+    EXPECT_EQ(std::get<0>(subscriber.trades[12]), 29); // BUY order at 79
     EXPECT_EQ(std::get<1>(subscriber.trades[12]), 10);
     EXPECT_EQ(std::get<2>(subscriber.trades[12]), 79);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[13]), 40); // Sell order at 60
+    EXPECT_EQ(std::get<0>(subscriber.trades[13]), 40); // SELL order at 60
     EXPECT_EQ(std::get<1>(subscriber.trades[13]), 10);
     EXPECT_EQ(std::get<2>(subscriber.trades[13]), 60);
 
-    EXPECT_EQ(std::get<0>(subscriber.trades[14]), 41); // Sell order at 60
+    EXPECT_EQ(std::get<0>(subscriber.trades[14]), 41); // SELL order at 60
     EXPECT_EQ(std::get<1>(subscriber.trades[14]), 15);
     EXPECT_EQ(std::get<2>(subscriber.trades[14]), 60);
 }

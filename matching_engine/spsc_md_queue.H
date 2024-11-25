@@ -3,6 +3,10 @@
 #include "include/rigtorp/SPSCQueue.h"
 #include "market_data/md_protocol.H"
 
+namespace ndfex {
+
+using namespace md;
+
 struct md_payload {
     MSG_TYPE msg_type;
     uint64_t order_id;
@@ -19,3 +23,5 @@ struct md_payload {
 } __attribute__((packed));
 
 using SPSCMDQueue = rigtorp::SPSCQueue<md_payload>;
+
+}  // namespace ndfex
