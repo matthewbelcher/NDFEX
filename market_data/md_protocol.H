@@ -17,8 +17,8 @@ enum class MSG_TYPE: uint8_t {
 };
 
 enum class SIDE: uint8_t {
-    BUY = 0,
-    SELL = 1,
+    BUY = 1,
+    SELL = 2,
 };
 
 struct md_header {

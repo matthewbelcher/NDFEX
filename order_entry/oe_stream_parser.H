@@ -16,15 +16,16 @@
 #include <vector>
 #include <cstring>
 
+
 namespace ndfex::oe {
 
 template<typename Handler>
-class oe_stream_parser {
+class StreamParser {
 
 public:
 
-    oe_stream_parser(Handler& handler) : handler(handler) {}
-    ~oe_stream_parser() = default;
+    StreamParser(Handler& handler) : handler(handler) {}
+    ~StreamParser() = default;
 
     void parse(int sock_fd, const char* buf, size_t len) {
 
@@ -43,22 +44,22 @@ public:
             switch (header->msg_type) {
                 case static_cast<uint8_t>(MSG_TYPE::NEW_ORDER): {
                     new_order* msg = reinterpret_cast<new_order*>(partial_message.data());
-                    handler.on_new_order(*msg);
+                    handler.on_new_order(sock_fd, *msg);
                     break;
                 }
                 case static_cast<uint8_t>(MSG_TYPE::DELETE_ORDER): {
                     delete_order* msg = reinterpret_cast<delete_order*>(partial_message.data());
-                    handler.on_delete_order(*msg);
+                    handler.on_delete_order(sock_fd, *msg);
                     break;
                 }
                 case static_cast<uint8_t>(MSG_TYPE::MODIFY_ORDER): {
                     modify_order* msg = reinterpret_cast<modify_order*>(partial_message.data());
-                    handler.on_modify_order(*msg);
+                    handler.on_modify_order(sock_fd, *msg);
                     break;
                 }
                 case static_cast<uint8_t>(MSG_TYPE::LOGIN): {
                     login* msg = reinterpret_cast<login*>(partial_message.data());
-                    handler.on_login(*msg);
+                    handler.on_login(sock_fd, *msg);
                     break;
                 }
                 default:
@@ -73,7 +74,7 @@ public:
                          "Unknown message type: %d", header->msg_type);
                     err_msg.error_message_length = strlen(reinterpret_cast<char*>(err_msg.error_message));
 
-                    write(sock_fd, &err_msg, sizeof(err_msg)); // ignore return value because we are closing the socket anyway
+                    write(sock_fd, reinterpret_cast<const char*>(&err_msg), sizeof(err_msg)); // ignore return value because we are closing the socket anyway
                     shutdown(sock_fd, SHUT_RDWR);
                     close(sock_fd);
                     break;

@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cstdint>
+#include <market_data/md_protocol.H>
 
 namespace ndfex::oe {
 
@@ -38,6 +39,7 @@ enum class REJECT_REASON: uint8_t {
     INVALID_PRICE = 5,
     INVALID_QUANTITY = 6,
     INVALID_SIDE = 7,
+    UNKNOWN_SESSION_ID = 8,
 };
 
 enum class LOGIN_STATUS: uint8_t {
@@ -47,7 +49,9 @@ enum class LOGIN_STATUS: uint8_t {
     INVALID_USERNAME = 5,
     INVALID_PASSWORD = 6,
     INVALID_SESSION = 7,
-    SESSION_ALREADY_ACTIVE = 8
+    SESSION_ALREADY_ACTIVE = 8,
+    DUPLICATE_LOGIN = 9,
+    INVALID_CLIENT_ID = 10,
 };
 
 struct oe_header {
@@ -74,7 +78,7 @@ struct new_order {
     oe_header header;
     uint64_t order_id;
     uint32_t symbol;
-    uint8_t side;
+    md::SIDE side;
     uint32_t quantity;
     uint32_t price;
     uint8_t flags;
@@ -88,7 +92,7 @@ struct delete_order {
 struct modify_order {
     oe_header header;
     uint64_t order_id;
-    uint8_t side;
+    md::SIDE side;
     uint32_t quantity;
     uint32_t price;
 } __attribute__((packed));

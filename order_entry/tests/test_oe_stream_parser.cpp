@@ -13,21 +13,21 @@ using namespace oe;
 class MockHandler {
 public:
   std::vector<uint64_t> new_orders;
-  void on_new_order(const new_order& msg) {
+  void on_new_order(int sock_fd, const new_order& msg) {
     new_orders.push_back(msg.order_id);
   }
-  void on_delete_order(const delete_order& msg) {}
-  void on_modify_order(const modify_order& msg) {}
-  void on_login(const login& msg) {}
+  void on_delete_order(int sock_fd, const delete_order& msg) {}
+  void on_modify_order(int sock_fd, const modify_order& msg) {}
+  void on_login(int sock_fd, const login& msg) {}
 
 };
 
 TEST(OEStreamParserTest, NewOrder) {
     MockHandler handler;
-    oe_stream_parser<MockHandler> parser(handler);
+    StreamParser<MockHandler> parser(handler);
     oe_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
 
-    new_order msg = {header, 1, 0, static_cast<uint8_t>(md::SIDE::BUY), 10, 50, 0};
+    new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     parser.parse(0, reinterpret_cast<char*>(&msg), sizeof(new_order));
 
     EXPECT_EQ(handler.new_orders.size(), 1);
@@ -36,9 +36,9 @@ TEST(OEStreamParserTest, NewOrder) {
 
 TEST(OEStreamParserTest, NewOrderPartial) {
     MockHandler handler;
-    oe_stream_parser<MockHandler> parser(handler);
+    StreamParser<MockHandler> parser(handler);
     oe_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
-    new_order msg = {header, 1, 0, static_cast<uint8_t>(md::SIDE::BUY), 10, 50, 0};
+    new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
     parser.parse(0, buf.data(), 1);
     parser.parse(0, buf.data() + 1, buf.size() - 1);
@@ -49,9 +49,9 @@ TEST(OEStreamParserTest, NewOrderPartial) {
 
 TEST(OEStreamParserTest, NewOrderMultiple) {
     MockHandler handler;
-    oe_stream_parser<MockHandler> parser(handler);
+    StreamParser<MockHandler> parser(handler);
     oe_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
-    new_order msg = {header, 1, 0, static_cast<uint8_t>(md::SIDE::BUY), 10, 50, 0};
+    new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
     parser.parse(0, buf.data(), buf.size());
     parser.parse(0, buf.data(), buf.size());
@@ -63,9 +63,9 @@ TEST(OEStreamParserTest, NewOrderMultiple) {
 
 TEST(OEStreamParserTest, NewOrderMultipleInSameBuffer) {
     MockHandler handler;
-    oe_stream_parser<MockHandler> parser(handler);
+    StreamParser<MockHandler> parser(handler);
     oe_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
-    new_order msg = {header, 1, 0, static_cast<uint8_t>(md::SIDE::BUY), 10, 50, 0};
+    new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
     buf += buf;
 
@@ -78,9 +78,9 @@ TEST(OEStreamParserTest, NewOrderMultipleInSameBuffer) {
 
 TEST(OEStreamParserTest, ErrorOnUnknownType) {
     MockHandler handler;
-    oe_stream_parser<MockHandler> parser(handler);
+    StreamParser<MockHandler> parser(handler);
     oe_header header = {sizeof(new_order), 0, 0, 0};
-    new_order msg = {header, 1, 0, static_cast<uint8_t>(md::SIDE::BUY), 10, 50, 0};
+    new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
 
     int fds[2];

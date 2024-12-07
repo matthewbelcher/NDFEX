@@ -1,20 +1,35 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -I../../matching_engine -I../ -I/usr/local/include
+CXXFLAGS = -std=c++17 -I../../matching_engine -I../ -I/usr/local/include -I../../
 LDFLAGS = -L/usr/local/lib -lgtest -lgtest_main -pthread
 
-SRC = test_oe_stream_parser.cpp
-OBJ = $(SRC:.cpp=.o)
-TARGET = test_oe_stream_parser
+SRC1 = test_oe_stream_parser.cpp
+SRC2 = test_oe_client_handler.cpp
 
-all: $(TARGET)
+OBJ1 = $(SRC1:.cpp=.o)
+OBJ2 = $(SRC2:.cpp=.o)
 
-$(TARGET): $(OBJ)
+TARGET1 = test_oe_stream_parser
+TARGET2 = test_oe_client_handler
+
+all: $(TARGET1) $(TARGET2)
+
+$(TARGET1): $(OBJ1)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
-$(OBJ): $(SRC) ../oe_stream_parser.H
+$(TARGET2): $(OBJ2)
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
+$(OBJ1): $(SRC1) ../oe_stream_parser.H
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-clean:
-	rm -f $(OBJ) $(TARGET)
+$(OBJ2): $(SRC2) ../oe_client_handler.H
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-.PHONY: all clean
+test: $(TARGET1) $(TARGET2)
+	./$(TARGET1)
+	./$(TARGET2)
+
+clean:
+	rm -f $(OBJ1) $(OBJ2) $(TARGET1) $(TARGET2)
+
+.PHONY: all clean test

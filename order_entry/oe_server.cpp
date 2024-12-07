@@ -32,7 +32,7 @@ EpollServer::EpollServer(uint16_t port) {
     addr.sin_port = htons(port);
     addr.sin_addr.s_addr = INADDR_ANY;
 
-    if (bind(listen_fd, (struct sockaddr*) &addr, sizeof(addr)) == -1) {
+    if (bind(listen_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == -1) {
         throw std::runtime_error("Failed to bind socket: " + std::string(strerror(errno)));
     }
 
@@ -77,7 +77,7 @@ void EpollServer::run() {
                 }
 
                 if (fcntl(conn_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
-                    throw std::runtime_error("Failed to set socket flags: " + std::string(strerror(errno)));
+                    throw std::runtime_error("Failed to set socket non-blocking flag: " + std::string(strerror(errno)));
                 }
 
                 struct epoll_event ev;
@@ -91,7 +91,7 @@ void EpollServer::run() {
                 // read from the socket until EWAIT is returned
                 while (true) {
                     ssize_t len = read(events[i].data.fd, buf, sizeof(buf));
-                    if (len == -1) {
+                    if (len < 0) {
                         if (errno == EAGAIN || errno == EWOULDBLOCK) {
                             break;
                         } else {

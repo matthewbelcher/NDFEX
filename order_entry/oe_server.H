@@ -1,8 +1,10 @@
 #pragma once
 
+#include "oe_stream_parser.H"
+#include "oe_client_handler.H"
+
 #include <cstdint>
 #include <sys/epoll.h>
-#include <oe_stream_parser.H>
 
 namespace ndfex::oe {
 
@@ -19,7 +21,7 @@ namespace ndfex::oe {
         int listen_fd;
         struct epoll_event events[16];
 
-        oe_stream_parser parser;
+        StreamParser<ClientHandler> parser;
         char buf[1500];
     };
 
