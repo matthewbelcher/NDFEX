@@ -5,6 +5,8 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <cstring>
+#include <bits/fcntl-linux.h>
+#include <fcntl.h>
 
 namespace ndfex::oe {
 
@@ -15,7 +17,7 @@ EpollServer::EpollServer(uint16_t port) {
         throw std::runtime_error("Failed to create epoll instance: " + std::string(strerror(errno)));
     }
 
-    listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    listen_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
     if (listen_fd == -1) {
         throw std::runtime_error("Failed to create socket: " + std::string(strerror(errno)));
     }
@@ -66,6 +68,16 @@ void EpollServer::run() {
                 int conn_fd = accept(listen_fd, (struct sockaddr*) &addr, &addr_len);
                 if (conn_fd == -1) {
                     throw std::runtime_error("Failed to accept connection: " + std::string(strerror(errno)));
+                }
+
+                // make the connection non-blocking
+                int flags = fcntl(conn_fd, F_GETFL, 0);
+                if (flags == -1) {
+                    throw std::runtime_error("Failed to get socket flags: " + std::string(strerror(errno)));
+                }
+
+                if (fcntl(conn_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+                    throw std::runtime_error("Failed to set socket flags: " + std::string(strerror(errno)));
                 }
 
                 struct epoll_event ev;

@@ -1,5 +1,9 @@
 /**
  * Order Entry Protocol definition
+ *
+ * Note all numeric fields are in little endian format. This is not typical of most network protocols
+ * but IS typical of x86/x86_64 architectures. Many exchanges use this format to avoid byte swapping
+ * since customers are typically running on x86/x86_64.
  */
 
 #pragma once
@@ -22,7 +26,8 @@ enum class MSG_TYPE: uint8_t {
     ACK = 101,
     REJECT = 102,
     FILL = 103,
-    CLOSE = 104
+    CLOSE = 104,
+    ERROR = 105
 };
 
 enum class REJECT_REASON: uint8_t {
@@ -88,7 +93,7 @@ struct modify_order {
     uint32_t price;
 } __attribute__((packed));
 
-struct ack {
+struct order_ack {
     oe_header header;
     uint64_t order_id;
     uint64_t exch_order_id;
@@ -96,13 +101,13 @@ struct ack {
     uint32_t price;
 } __attribute__((packed));
 
-struct reject {
+struct order_reject {
     oe_header header;
     uint64_t order_id;
     uint8_t reason_code;
 } __attribute__((packed));
 
-struct fill {
+struct order_fill {
     oe_header header;
     uint64_t order_id;
     uint32_t quantity;
@@ -110,10 +115,17 @@ struct fill {
     uint8_t flags;
 } __attribute__((packed));
 
-struct close {
+struct order_closed {
     oe_header header;
     uint64_t order_id;
 
+} __attribute__((packed));
+
+struct error_message {
+    oe_header header;
+    uint8_t error_code;
+    uint16_t error_message_length;
+    uint8_t error_message[32];
 } __attribute__((packed));
 
 } // namespace ndfex::oe
