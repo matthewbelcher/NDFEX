@@ -1,19 +1,21 @@
-
 #include "md_mcast.H"
 #include <errno.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <cstring>
+#include <spdlog/spdlog.h>
 
 namespace ndfex {
 
 MarketDataPublisher::MarketDataPublisher(std::vector<std::unique_ptr<SPSCMDQueue>>& queues,
     const std::string mcastGroup,
     const std::uint16_t mcastPort,
-    const std::string localMcastIface) : queues(queues) {
+    const std::string localMcastIface,
+    std::shared_ptr<spdlog::logger> logger) : queues(queues), logger(logger) {
     multicast_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (multicast_fd < 0) {
+        logger->error("Failed to create multicast socket: {}", strerror(errno));
         throw std::runtime_error("Failed to create multicast socket " + std::string(strerror(errno)));
     }
 
@@ -25,6 +27,7 @@ MarketDataPublisher::MarketDataPublisher(std::vector<std::unique_ptr<SPSCMDQueue
     localInterface.s_addr = inet_addr(localMcastIface.c_str());
     int rc = setsockopt(multicast_fd, IPPROTO_IP, IP_MULTICAST_IF, (char*)&localInterface, sizeof(localInterface));
     if (rc < 0) {
+        logger->error("Failed to bind to multicast address: {}", strerror(errno));
         throw std::runtime_error("Failed to bind to multicast address " + std::string(strerror(errno)));
     }
 }
@@ -86,8 +89,8 @@ void MarketDataPublisher::process() {
             queue->pop();
         }
 
-
         if (sendto(multicast_fd, &buffer, buffer_size, 0, reinterpret_cast<struct sockaddr*>(&mcast_addr), sizeof(mcast_addr)) < 0) {
+            logger->error("Failed to send payload to multicast group: {}", strerror(errno));
             throw std::runtime_error("Failed to send payload to multicast group " + std::string(strerror(errno)));
         }
         buffer_size = 0;

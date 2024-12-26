@@ -7,13 +7,9 @@
 #include <iostream>
 
 #include "market_data/md_protocol.H"
+#include "exceptions.H"
 
 namespace ndfex {
-
-    class OrderNotFoundException : public std::runtime_error {
-    public:
-        explicit OrderNotFoundException(const std::string& message) : std::runtime_error(message) {}
-    };
 
     template <typename Subscriber>
     class OrderLadder {

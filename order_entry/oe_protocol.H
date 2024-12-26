@@ -40,6 +40,7 @@ enum class REJECT_REASON: uint8_t {
     INVALID_QUANTITY = 6,
     INVALID_SIDE = 7,
     UNKNOWN_SESSION_ID = 8,
+    DUPLICATE_LOGIN = 9,
 };
 
 enum class LOGIN_STATUS: uint8_t {
@@ -57,6 +58,7 @@ enum class LOGIN_STATUS: uint8_t {
 struct oe_header {
     uint16_t length;
     uint8_t msg_type;
+    uint8_t version;
     uint32_t seq_num;
     uint32_t client_id;
 } __attribute__((packed));
@@ -108,7 +110,7 @@ struct order_ack {
 struct order_reject {
     oe_header header;
     uint64_t order_id;
-    uint8_t reason_code;
+    uint8_t reject_reason;
 } __attribute__((packed));
 
 struct order_fill {

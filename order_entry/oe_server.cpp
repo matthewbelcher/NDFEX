@@ -1,16 +1,24 @@
 #include "oe_server.H"
+#include "oe_stream_parser.H"
+#include "oe_client_handler.H"
+#include "../matching_engine/order_ladder.H"
+#include "../matching_engine/spsc_subscriber.H"
+#include "../matching_engine/utils.H"
 
 #include <stdexcept>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
-#include <bits/fcntl-linux.h>
 #include <fcntl.h>
 
 namespace ndfex::oe {
 
-EpollServer::EpollServer(uint16_t port) {
+template <typename ClientHandler>
+EpollServer<ClientHandler>::EpollServer(ClientHandler& handler, uint16_t port, std::shared_ptr<spdlog::logger> logger)
+    : logger(logger), parser(handler, logger)
+{
 
     epoll_fd = epoll_create1(0);
     if (epoll_fd == -1) {
@@ -49,15 +57,18 @@ EpollServer::EpollServer(uint16_t port) {
     }
 }
 
-EpollServer::~EpollServer() {
+template <typename ClientHandler>
+EpollServer<ClientHandler>::~EpollServer() {
     close(epoll_fd);
     close(listen_fd);
 }
 
-void EpollServer::run() {
+template <typename ClientHandler>
+void EpollServer<ClientHandler>::run() {
     while (true) {
         int nfds = epoll_wait(epoll_fd, events, 16, -1);
         if (nfds == -1) {
+            logger->error("Failed to wait on epoll: {}", strerror(errno));
             throw std::runtime_error("Failed to wait on epoll: " + std::string(strerror(errno)));
         }
 
@@ -67,8 +78,11 @@ void EpollServer::run() {
                 socklen_t addr_len = sizeof(addr);
                 int conn_fd = accept(listen_fd, (struct sockaddr*) &addr, &addr_len);
                 if (conn_fd == -1) {
+                    logger->error("Failed to accept connection: {}", strerror(errno));
                     throw std::runtime_error("Failed to accept connection: " + std::string(strerror(errno)));
                 }
+
+                logger->info("Accepted new connection from {}:{}", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
 
                 // make the connection non-blocking
                 int flags = fcntl(conn_fd, F_GETFL, 0);
@@ -95,9 +109,11 @@ void EpollServer::run() {
                         if (errno == EAGAIN || errno == EWOULDBLOCK) {
                             break;
                         } else {
+                            logger->error("Failed to read from socket: {}", strerror(errno));
                             throw std::runtime_error("Failed to read from socket: " + std::string(strerror(errno)));
                         }
                     } else if (len == 0) {
+                        logger->info("Socket {} closed", events[i].data.fd);
                         close(events[i].data.fd);
                         parser.socket_closed(events[i].data.fd);
                         break;
@@ -109,5 +125,7 @@ void EpollServer::run() {
         }
     }
 }
+
+template class EpollServer<ClientHandler<OrderLadder<SPSC_Subscriber>>>;
 
 } // namespace ndfex::oe

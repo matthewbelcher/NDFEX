@@ -42,3 +42,7 @@
 
 # Ignore output directory
 matching_engine/tests/out/
+matching_engine/logs/
+matching_engine/out/
+
+.vscode/

@@ -86,6 +86,7 @@ TEST(SPSCSubscriberTest, Performance) {
             while (!queue.front());
             md_payload p = *queue.front();
             queue.pop();
+            (void) p;
         }
     });
 

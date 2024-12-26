@@ -5,6 +5,7 @@
 #pragma once
 
 #include "oe_protocol.H"
+#include <spdlog/logger.h>
 
 #include <cstdint>
 #include <cstddef>
@@ -14,6 +15,7 @@
 #include <unordered_map>
 #include <iostream>
 #include <vector>
+#include <memory>
 #include <cstring>
 
 
@@ -24,7 +26,7 @@ class StreamParser {
 
 public:
 
-    StreamParser(Handler& handler) : handler(handler) {}
+    StreamParser(Handler& handler, std::shared_ptr<spdlog::logger> logger) : handler(handler), logger(logger) {}
     ~StreamParser() = default;
 
     void parse(int sock_fd, const char* buf, size_t len) {
@@ -92,6 +94,7 @@ public:
 private:
 
     Handler& handler;
+    std::shared_ptr<spdlog::logger> logger;
     std::unordered_map<int, std::vector<char>> sock_to_partial_messages;
 
 };

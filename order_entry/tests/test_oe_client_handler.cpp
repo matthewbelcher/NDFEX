@@ -1,9 +1,9 @@
-
-#include "md_protocol.H"
+#include "../market_data/md_protocol.H"
 #include "oe_client_handler.H"
 
 #include <gtest/gtest.h>
 #include <cstring>
+#include <spdlog/sinks/stdout_color_sinks.h>
 
 using namespace ndfex;
 using namespace oe;
@@ -13,8 +13,6 @@ public:
     void new_order(uint64_t exch_order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {}
     void delete_order(uint64_t exch_order_id) {}
     void modify_order(uint64_t exch_order_id, md::SIDE side, uint32_t quantity, uint32_t price) {}
-
-
 };
 
 TEST(OEClientHandlerTest, LoginRejectBadUsername) {
@@ -24,7 +22,8 @@ TEST(OEClientHandlerTest, LoginRejectBadUsername) {
     user.password = "password";
     user.client_id = 1;
 
-    ClientHandler<MockOrderHandler> handler(users);
+    auto logger = spdlog::stdout_color_mt("test_logger_login_reject_bad_username");
+    ClientHandler<MockOrderHandler> handler(users, logger);
 
     login msg;
     msg.header.length = sizeof(login);
@@ -53,7 +52,8 @@ TEST(OEClientHandlerTest, LoginRejectBadPassword) {
     user.password = "password";
     user.client_id = 1;
 
-    ClientHandler<MockOrderHandler> handler(users);
+    auto logger = spdlog::stdout_color_mt("test_logger_login_reject_bad_password");
+    ClientHandler<MockOrderHandler> handler(users, logger);
 
     login msg;
     msg.header.length = sizeof(login);
@@ -82,7 +82,8 @@ TEST(OEClientHandlerTest, LoginRejectAlreadyLoggedIn) {
     user.password = "password";
     user.client_id = 1;
 
-    ClientHandler<MockOrderHandler> handler(users);
+    auto logger = spdlog::stdout_color_mt("test_logger_login_reject_already_logged_in");
+    ClientHandler<MockOrderHandler> handler(users, logger);
 
     login msg;
     msg.header.length = sizeof(login);
@@ -106,12 +107,12 @@ TEST(OEClientHandlerTest, LoginRejectAlreadyLoggedIn) {
     // login again
     int fd2[2];
     pipe(fd2);
-    handler.on_login(fd[1], msg);
+    handler.on_login(fd2[1], msg);
 
     // read the response
     read(fd2[0], &response, sizeof(login_response));
 
-    EXPECT_EQ(response.status, static_cast<uint8_t>(LOGIN_STATUS::DUPLICATE_LOGIN));
+    EXPECT_EQ(response.status, static_cast<uint8_t>(LOGIN_STATUS::SESSION_ALREADY_ACTIVE));
 
     // check error on the first socket
     error_message err_msg;
@@ -119,6 +120,7 @@ TEST(OEClientHandlerTest, LoginRejectAlreadyLoggedIn) {
 
     EXPECT_EQ(err_msg.header.msg_type, static_cast<uint8_t>(MSG_TYPE::ERROR));
     EXPECT_EQ(err_msg.error_message_length, 15);
+    EXPECT_EQ(err_msg.error_code, static_cast<uint8_t>(REJECT_REASON::DUPLICATE_LOGIN));
     EXPECT_EQ(std::string(reinterpret_cast<char*>(err_msg.error_message), 15), "Duplicate login");
 }
 

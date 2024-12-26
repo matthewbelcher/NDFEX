@@ -6,6 +6,7 @@
 #include <thread>
 #include <vector>
 #include <memory>
+#include <spdlog/sinks/stdout_color_sinks.h>
 
 int main(int argc, char* argv[]) {
 
@@ -19,8 +20,9 @@ int main(int argc, char* argv[]) {
     std::string mcast_addr{argv[1]};
     uint16_t mcast_port = std::stoi(argv[2]);
     std::string bind_ip{argv[3]};
+    auto logger = spdlog::stdout_color_mt("md_mcast");
 
-    ndfex::MarketDataPublisher publisher(queues, mcast_addr, mcast_port, bind_ip);
+    ndfex::MarketDataPublisher publisher(queues, mcast_addr, mcast_port, bind_ip, logger);
     ndfex::SPSC_Subscriber subscriber(*queues[0]);
     ndfex::OrderLadder<ndfex::SPSC_Subscriber> ladder(&subscriber, 1234);
 
