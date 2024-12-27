@@ -175,6 +175,8 @@ class ClientHandler {
                 return;
             }
 
+            // TODO validate the order fields (e.g. price, quantity)
+
             uint64_t exch_order_id = nanotime();
             client_order_id_map[msg.order_id] = {exch_order_id, msg.symbol};
 

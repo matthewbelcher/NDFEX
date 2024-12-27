@@ -1,4 +1,6 @@
 #include "md_mcast.H"
+#include "utils.H"
+
 #include <errno.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -6,13 +8,16 @@
 #include <cstring>
 #include <spdlog/spdlog.h>
 
+#include <iostream>
+
 namespace ndfex {
 
-MarketDataPublisher::MarketDataPublisher(std::vector<std::unique_ptr<SPSCMDQueue>>& queues,
+MarketDataPublisher::MarketDataPublisher(
     const std::string mcastGroup,
     const std::uint16_t mcastPort,
     const std::string localMcastIface,
-    std::shared_ptr<spdlog::logger> logger) : queues(queues), logger(logger) {
+    std::shared_ptr<spdlog::logger> logger) : logger(logger) {
+
     multicast_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (multicast_fd < 0) {
         logger->error("Failed to create multicast socket: {}", strerror(errno));
@@ -30,71 +35,108 @@ MarketDataPublisher::MarketDataPublisher(std::vector<std::unique_ptr<SPSCMDQueue
         logger->error("Failed to bind to multicast address: {}", strerror(errno));
         throw std::runtime_error("Failed to bind to multicast address " + std::string(strerror(errno)));
     }
+
+    // set mcast socket to non-blocking
+    int flags = fcntl(multicast_fd, F_GETFL, 0);
+    if (flags == -1) {
+        logger->error("Failed to get socket flags: {}", strerror(errno));
+        throw std::runtime_error("Failed to get socket flags " + std::string(strerror(errno)));
+    }
+
+    rc = fcntl(multicast_fd, F_SETFL, flags | O_NONBLOCK);
+    if (rc == -1) {
+        logger->error("Failed to set socket non-blocking: {}", strerror(errno));
+        throw std::runtime_error("Failed to set socket non-blocking " + std::string(strerror(errno)));
+    }
+
+    char loopch = 1;
+    if (setsockopt(multicast_fd, IPPROTO_IP, IP_MULTICAST_LOOP, (char *)&loopch, sizeof(loopch)) < 0)
+    {
+        throw std::runtime_error("Failed to enable multicast loopback");
+    }
 }
 
-void MarketDataPublisher::process() {
-    for (auto& queue : queues) {
-        while (queue->front() && buffer_size + md::MAX_MSG_SIZE < sizeof(buffer)) {
-            md_payload payload = *queue->front();
+void MarketDataPublisher::publish_new_order(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {
+    md::new_order msg;
+    msg.header.length = sizeof(md::new_order);
+    msg.order_id = order_id;
+    msg.symbol = symbol;
+    msg.side = side;
+    msg.quantity = quantity;
+    msg.price = price;
+    msg.flags = flags;
 
-            md::md_header* header = reinterpret_cast<md::md_header*>(&buffer[buffer_size]);
-            header->magic_number = md::MAGIC_NUMBER;
-            header->seq_num = seq_num++;
-            header->timestamp = 0; // TODO nanotime();
-            header->msg_type = payload.msg_type;
+    write_msg(msg);
+    send();
+}
 
-            if (payload.msg_type == md::MSG_TYPE::NEW_ORDER) {
-                md::new_order* msg = reinterpret_cast<md::new_order*>(&buffer[buffer_size]);
-                msg->order_id = payload.order_id;
-                msg->symbol = payload.symbol;
-                msg->side = payload.side;
-                msg->quantity = payload.quantity;
-                msg->price = payload.price;
-                msg->flags = payload.flags;
-                header->length = sizeof(md::new_order);
-                buffer_size += sizeof(md::new_order);
+void MarketDataPublisher::publish_delete_order(uint64_t order_id) {
+    md::delete_order msg;
+    msg.header.length = sizeof(md::delete_order);
+    msg.order_id = order_id;
 
-            } else if (payload.msg_type == md::MSG_TYPE::DELETE_ORDER) {
-                md::delete_order* msg = reinterpret_cast<md::delete_order*>(&buffer[buffer_size]);
-                msg->order_id = payload.order_id;
-                header->length = sizeof(md::delete_order);
-                buffer_size += sizeof(md::delete_order);
+    write_msg(msg);
+    send();
+}
 
-            } else if (payload.msg_type == md::MSG_TYPE::MODIFY_ORDER) {
-                md::modify_order* msg = reinterpret_cast<md::modify_order*>(&buffer[buffer_size]);
-                msg->order_id = payload.order_id;
-                msg->side = payload.side;
-                msg->quantity = payload.quantity;
-                msg->price = payload.price;
-                header->length = sizeof(md::modify_order);
-                buffer_size += sizeof(md::modify_order);
+void MarketDataPublisher::publish_modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price) {
+    md::modify_order msg;
+    msg.header.length = sizeof(md::modify_order);
+    msg.order_id = order_id;
+    msg.side = side;
+    msg.quantity = quantity;
+    msg.price = price;
 
-            } else if (payload.msg_type == md::MSG_TYPE::TRADE) {
-                md::trade* msg = reinterpret_cast<md::trade*>(&buffer[buffer_size]);
-                msg->order_id = payload.order_id;
-                msg->quantity = payload.quantity;
-                msg->price = payload.price;
-                header->length = sizeof(md::trade);
-                buffer_size += sizeof(md::trade);
+    write_msg(msg);
+    send();
+}
 
-            } else if (payload.msg_type == md::MSG_TYPE::TRADE_SUMMARY) {
-                md::trade_summary* msg = reinterpret_cast<md::trade_summary*>(&buffer[buffer_size]);
-                msg->symbol = payload.symbol;
-                msg->aggressor_side = payload.side;
-                msg->total_quantity = payload.quantity;
-                msg->last_price = payload.price;
-                header->length = sizeof(md::trade_summary);
-                buffer_size += sizeof(md::trade_summary);
-            }
-            queue->pop();
-        }
+void MarketDataPublisher::queue_trade(uint64_t order_id, uint32_t quantity, uint32_t price) {
+    md::trade msg;
+    msg.header.length = sizeof(md::trade);
+    msg.order_id = order_id;
+    msg.quantity = quantity;
+    msg.price = price;
 
-        if (sendto(multicast_fd, &buffer, buffer_size, 0, reinterpret_cast<struct sockaddr*>(&mcast_addr), sizeof(mcast_addr)) < 0) {
-            logger->error("Failed to send payload to multicast group: {}", strerror(errno));
-            throw std::runtime_error("Failed to send payload to multicast group " + std::string(strerror(errno)));
-        }
-        buffer_size = 0;
+    queued_trades.push_back(msg);
+}
+
+void MarketDataPublisher::publish_queued_trades(uint32_t symbol, md::SIDE aggressor_side) {
+    // get total quantity and last price
+    uint32_t total_quantity = 0;
+    uint32_t last_price = 0;
+    for (const auto& trade : queued_trades) {
+        total_quantity += trade.quantity;
+        last_price = trade.price;
     }
+
+    md::trade_summary msg;
+    msg.header.length = sizeof(md::trade_summary);
+    msg.symbol = symbol;
+    msg.aggressor_side = aggressor_side;
+    msg.total_quantity = total_quantity;
+    msg.last_price = last_price;
+
+    write_msg(msg);
+
+    for (const auto& trade : queued_trades) {
+        write_msg(trade);
+    }
+    send();
+}
+
+void MarketDataPublisher::send() {
+    if (buffer_size == 0) {
+        // nothing to send
+        return;
+    }
+
+    int rc = sendto(multicast_fd, &buffer, buffer_size, 0, reinterpret_cast<struct sockaddr*>(&mcast_addr), sizeof(mcast_addr));
+    if (rc < 0) {
+        logger->error("Failed to send payload to multicast group: {}", strerror(errno));
+        throw std::runtime_error("Failed to send payload to multicast group " + std::string(strerror(errno)));
+    }
+    buffer_size = 0;
 }
 
 }  // namespace ndfex

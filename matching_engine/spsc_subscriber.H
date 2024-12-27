@@ -16,6 +16,7 @@ public:
     ~SPSC_Subscriber() = default;
 
     void onNewOrder(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {
+
         queue.emplace(md::MSG_TYPE::NEW_ORDER, order_id, symbol, side, quantity, price, flags);
     }
 

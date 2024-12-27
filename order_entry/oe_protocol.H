@@ -55,7 +55,7 @@ enum class LOGIN_STATUS: uint8_t {
     INVALID_CLIENT_ID = 10,
 };
 
-struct oe_header {
+struct oe_request_header {
     uint16_t length;
     uint8_t msg_type;
     uint8_t version;
@@ -63,72 +63,81 @@ struct oe_header {
     uint32_t client_id;
 } __attribute__((packed));
 
+struct oe_response_header {
+    uint16_t length;
+    uint8_t msg_type;
+    uint8_t version;
+    uint32_t seq_num;
+    uint32_t last_seq_num;
+    uint32_t client_id;
+} __attribute__((packed));
+
 struct login {
-    oe_header header;
+    oe_request_header header;
     uint64_t session_id;
     uint8_t username[16];
     uint8_t password[16];
 } __attribute__((packed));
 
 struct login_response {
-    oe_header header;
+    oe_response_header header;
     uint64_t session_id;
     uint8_t status;
 } __attribute__((packed));
 
 struct new_order {
-    oe_header header;
+    oe_request_header header;
     uint64_t order_id;
     uint32_t symbol;
     md::SIDE side;
     uint32_t quantity;
-    uint32_t price;
+    int32_t price;
     uint8_t flags;
 } __attribute__((packed));
 
 struct delete_order {
-    oe_header header;
+    oe_request_header header;
     uint64_t order_id;
 } __attribute__((packed));
 
 struct modify_order {
-    oe_header header;
+    oe_request_header header;
     uint64_t order_id;
     md::SIDE side;
     uint32_t quantity;
-    uint32_t price;
+    int32_t price;
 } __attribute__((packed));
 
 struct order_ack {
-    oe_header header;
+    oe_response_header header;
     uint64_t order_id;
     uint64_t exch_order_id;
     uint32_t quantity;
-    uint32_t price;
+    int32_t price;
 } __attribute__((packed));
 
 struct order_reject {
-    oe_header header;
+    oe_response_header header;
     uint64_t order_id;
     uint8_t reject_reason;
 } __attribute__((packed));
 
 struct order_fill {
-    oe_header header;
+    oe_response_header header;
     uint64_t order_id;
     uint32_t quantity;
-    uint32_t price;
+    int32_t price;
     uint8_t flags;
 } __attribute__((packed));
 
 struct order_closed {
-    oe_header header;
+    oe_response_header header;
     uint64_t order_id;
 
 } __attribute__((packed));
 
 struct error_message {
-    oe_header header;
+    oe_response_header header;
     uint8_t error_code;
     uint16_t error_message_length;
     uint8_t error_message[32];

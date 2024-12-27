@@ -1,6 +1,6 @@
 #include "matching_engine.H"
 #include "md_mcast.H"
-#include "spsc_md_queue.H"
+#include "spsc_oe_queue.H"
 #include "spsc_subscriber.H"
 #include "order_ladder.H"
 
@@ -52,10 +52,10 @@ int main(int argc, char** argv) {
     async_file->info("Hello from async logger");
     async_file->flush();
 
-    // create spsc md queue for as many symbols as we have
-    std::vector<std::unique_ptr<SPSCMDQueue>> queues;
+    // create spsc oe queue for as many symbols as we have
+    std::vector<std::unique_ptr<SPSCOEQueue>> queues;
     for (ssize_t i = 0; i < symbols.size(); ++i) {
-        queues.push_back(std::make_unique<SPSCMDQueue>(20000));
+        queues.push_back(std::make_unique<SPSCOEQueue>(20000));
     }
 
     // create market data publisher
