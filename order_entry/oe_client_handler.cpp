@@ -178,8 +178,8 @@ void ClientHandler::on_modify_order(int sock_fd, const modify_order& msg) {
     }
 
     auto it = client_to_open_orders.find(msg.header.client_id);
-    if (it == client_to_open_orders.end()) {
-        logger->warn("Unknown order id for modify order from client {}", msg.header.client_id);
+    if (it == client_to_open_orders.end() || it->second.find(msg.order_id) == it->second.end()) {
+        logger->warn("Unknown order id {} for modify order from client {}", msg.order_id, msg.header.client_id);
         send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(REJECT_REASON::UKNOWN_ORDER_ID), msg.order_id);
         return;
     }

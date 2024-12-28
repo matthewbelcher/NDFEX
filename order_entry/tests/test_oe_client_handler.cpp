@@ -463,6 +463,7 @@ TEST_F(OEClientHandlerTest, MultipleOrderCancelModify) {
     read(fd[0], &closed, sizeof(order_closed));
 
     EXPECT_EQ(closed.header.msg_type, static_cast<uint8_t>(MSG_TYPE::CLOSE));
+    EXPECT_EQ(closed.header.last_seq_num, 2);
     EXPECT_EQ(closed.order_id, 1);
 
     // try deleting again
@@ -473,7 +474,6 @@ TEST_F(OEClientHandlerTest, MultipleOrderCancelModify) {
     msg5.header.client_id = 1;
     msg5.header.session_id = response.session_id;
     msg5.order_id = 1;
-
 
     handler.on_delete_order(fd[1], msg5);
 
