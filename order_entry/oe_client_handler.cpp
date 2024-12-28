@@ -14,14 +14,14 @@ ClientHandler::ClientHandler(
       logger(logger) {}
 
 void ClientHandler::on_login(int sock_fd, const login& msg) {
-    logger->info("Received login request from client {}", msg.header.client_id);
+    logger->info("Received login request from client {} {} {} {}", msg.header.client_id, users.begin()->second.username);
     // validate username and password
     auto it = users.find(std::string(reinterpret_cast<const char*>(msg.username)));
     if (it == users.end()
         || it->second.password != std::string(reinterpret_cast<const char*>(msg.password))
         || it->second.client_id != msg.header.client_id) {
 
-        logger->warn("Invalid login attempt from client {}", msg.header.client_id);
+        logger->warn("Invalid login attempt from client {} {}", msg.header.client_id, std::string(reinterpret_cast<const char*>(msg.username)));
 
         // send login response with status = 1
         login_response response;
@@ -44,7 +44,6 @@ void ClientHandler::on_login(int sock_fd, const login& msg) {
 
         shutdown(sock_fd, SHUT_RDWR);
         close(sock_fd);
-
         return;
     }
 
@@ -124,7 +123,7 @@ void ClientHandler::on_login(int sock_fd, const login& msg) {
 
 void ClientHandler::on_new_order(int sock_fd, const new_order& msg) {
     logger->info("Received new order from client {}", msg.header.client_id);
-    if (!validate_session(sock_fd, msg.header.seq_num, msg.header.client_id)) {
+    if (!validate_session(sock_fd, msg.header.session_id, msg.header.client_id)) {
         logger->warn("Invalid session for new order from client {}", msg.header.client_id);
         send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SESSION_ID), msg.order_id);
         return;
@@ -152,7 +151,7 @@ void ClientHandler::on_new_order(int sock_fd, const new_order& msg) {
 
 void ClientHandler::on_delete_order(int sock_fd, const delete_order& msg) {
     logger->info("Received delete order from client {}", msg.header.client_id);
-    if (!validate_session(sock_fd, msg.header.seq_num, msg.header.client_id)) {
+    if (!validate_session(sock_fd, msg.header.session_id, msg.header.client_id)) {
         logger->warn("Invalid session for delete order from client {}", msg.header.client_id);
         send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SESSION_ID), msg.order_id);
         return;
@@ -160,8 +159,8 @@ void ClientHandler::on_delete_order(int sock_fd, const delete_order& msg) {
 
     // check the client order id exists
     auto it = client_to_open_orders.find(msg.header.client_id);
-    if (it == client_to_open_orders.end()) {
-        logger->warn("Unknown order id for delete order from client {}", msg.header.client_id);
+    if (it == client_to_open_orders.end() || it->second.find(msg.order_id) == it->second.end()) {
+        logger->warn("Unknown order id {} for delete order from client {}", msg.order_id, msg.header.client_id);
         send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(REJECT_REASON::UKNOWN_ORDER_ID), msg.order_id);
         return;
     }
@@ -172,7 +171,7 @@ void ClientHandler::on_delete_order(int sock_fd, const delete_order& msg) {
 
 void ClientHandler::on_modify_order(int sock_fd, const modify_order& msg) {
     logger->info("Received modify order from client {}", msg.header.client_id);
-    if (!validate_session(sock_fd, msg.header.seq_num, msg.header.client_id)) {
+    if (!validate_session(sock_fd, msg.header.session_id, msg.header.client_id)) {
         logger->warn("Invalid session for modify order from client {}", msg.header.client_id);
         send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SESSION_ID), msg.order_id);
         return;
@@ -198,6 +197,7 @@ void ClientHandler::on_modify_order(int sock_fd, const modify_order& msg) {
 void ClientHandler::process() {
     while (from_matching_engine.front()) {
         oe_payload& payload = *from_matching_engine.front();
+
         auto it = exch_to_client_orders.find(payload.exch_order_id);
         if (it == exch_to_client_orders.end()) {
             uint64_t exch_order_id = payload.exch_order_id;
@@ -359,7 +359,7 @@ void ClientHandler::send_order_reject(int sock_fd, uint32_t seq_num, uint32_t cl
         shutdown(sock_fd, SHUT_RDWR);
         close(sock_fd);
     }
-    logger->warn("Sent order reject to client {} seq {} reason", client_id, seq_num, reason_code);
+    logger->warn("Sent order reject to client {} seq {} reason {}", client_id, seq_num, static_cast<int>(reason_code));
 }
 
 void ClientHandler::cancel_all_client_orders(uint32_t client_id) {

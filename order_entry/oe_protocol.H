@@ -75,6 +75,7 @@ struct oe_request_header {
     uint8_t version;
     uint32_t seq_num;
     uint32_t client_id;
+    uint64_t session_id;
 } __attribute__((packed));
 
 struct oe_response_header {
@@ -88,7 +89,6 @@ struct oe_response_header {
 
 struct login {
     oe_request_header header;
-    uint64_t session_id;
     uint8_t username[16];
     uint8_t password[16];
 } __attribute__((packed));
