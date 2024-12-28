@@ -7,6 +7,7 @@
 #include <iostream>
 
 #include "market_data/md_protocol.H"
+#include "order_entry/oe_protocol.H"
 #include "exceptions.H"
 
 namespace ndfex {
@@ -61,7 +62,7 @@ namespace ndfex {
     private:
 
         template <typename PriceLevels>
-        void match(md::SIDE side, uint32_t& quantity, uint32_t price,
+        void match(uint64_t order_id, md::SIDE side, uint32_t& quantity, uint32_t price,
                    PriceLevels& opposite_side_price_levels);
 
         template <typename PriceLevels>
@@ -76,13 +77,20 @@ namespace ndfex {
     void OrderLadder<Subscriber>::handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags, PriceLevels& price_levels) {
 
         if (side == md::SIDE::BUY) {
-            match(side, quantity, price, sell_levels);
+            match(order_id, side, quantity, price, sell_levels);
         } else {
-            match(side, quantity, price, buy_levels);
+            match(order_id, side, quantity, price, buy_levels);
+        }
+
+        // IOC orders are not added to the ladder
+        if (flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC)) {
+            subscriber->onNewOrder(order_id, symbol, side, quantity, price, flags);
+            return;
         }
 
         if (quantity == 0) {
-            // order is fully matched
+            // order is fully matched, still notify subscriber but do not add to the ladder
+            subscriber->onNewOrder(order_id, symbol, side, quantity, price, flags);
             return;
         }
 
@@ -143,7 +151,6 @@ namespace ndfex {
         }
 
         orders.erase(order_id);
-        subscriber->onDeleteOrder(order_id);
     }
 
     template <typename Subscriber>
@@ -175,6 +182,7 @@ namespace ndfex {
                 sell_levels.erase(price);
             }
         }
+        subscriber->onDeleteOrder(order_id);
     }
 
     template <typename Subscriber>
@@ -197,7 +205,7 @@ namespace ndfex {
 
     template <typename Subscriber>
     template <typename PriceLevels>
-    void OrderLadder<Subscriber>::match(md::SIDE side, uint32_t& quantity, uint32_t price,
+    void OrderLadder<Subscriber>::match(uint64_t incoming_order_id, md::SIDE side, uint32_t& quantity, uint32_t price,
                                         PriceLevels& opposite_side_price_levels) {
         // check if there are any orders on the opposite side at the same or better price level
         auto it = opposite_side_price_levels.begin();
@@ -212,13 +220,23 @@ namespace ndfex {
                 if (order->quantity <= quantity) {
                     // order is fully matched
                     subscriber->onTrade(order->order_id, order->quantity, order->price);
+                    subscriber->onFill(order->order_id, symbol, order->side, order->quantity, order->price, static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED));
+
                     quantity -= order->quantity;
+                    subscriber->onFill(incoming_order_id, symbol, side, order->quantity, order->price,
+                                       static_cast<uint8_t>(quantity > 0 ? oe::FILL_FLAGS::PARTIAL_FILL : oe::FILL_FLAGS::CLOSED));
+
                     auto to_delete = order;
                     order = order->next;
                     handle_delete_order(to_delete->order_id, opposite_side_price_levels);
                 } else {
                     // order is partially matched
                     subscriber->onTrade(order->order_id, quantity, order->price);
+                    subscriber->onFill(order->order_id, symbol, order->side, quantity, order->price,
+                                       static_cast<uint8_t>(oe::FILL_FLAGS::PARTIAL_FILL));
+                    subscriber->onFill(incoming_order_id, symbol, side, quantity, order->price,
+                                       static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED));
+
                     order->quantity -= quantity;
                     quantity = 0;
                     return;

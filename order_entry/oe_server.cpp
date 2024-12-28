@@ -1,8 +1,6 @@
 #include "oe_server.H"
 #include "oe_stream_parser.H"
 #include "oe_client_handler.H"
-#include "../matching_engine/order_ladder.H"
-#include "../matching_engine/spsc_subscriber.H"
 #include "../matching_engine/utils.H"
 
 #include <stdexcept>
@@ -17,7 +15,7 @@ namespace ndfex::oe {
 
 template <typename ClientHandler>
 EpollServer<ClientHandler>::EpollServer(ClientHandler& handler, uint16_t port, std::shared_ptr<spdlog::logger> logger)
-    : logger(logger), parser(handler, logger)
+    : logger(logger), parser(handler, logger), handler(handler)
 {
 
     epoll_fd = epoll_create1(0);
@@ -123,9 +121,12 @@ void EpollServer<ClientHandler>::run() {
                 }
             }
         }
+
+        // process any messages from the client handler
+        handler.process();
     }
 }
 
-template class EpollServer<ClientHandler<OrderLadder<SPSC_Subscriber>>>;
+template class EpollServer<oe::ClientHandler>;
 
 } // namespace ndfex::oe

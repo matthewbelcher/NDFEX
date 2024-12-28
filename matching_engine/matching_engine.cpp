@@ -1,7 +1,7 @@
 #include "matching_engine.H"
 #include "md_mcast.H"
 #include "spsc_oe_queue.H"
-#include "spsc_subscriber.H"
+#include "me_broker.H"
 #include "order_ladder.H"
 
 #include "order_entry/oe_server.H"
@@ -52,38 +52,36 @@ int main(int argc, char** argv) {
     async_file->info("Hello from async logger");
     async_file->flush();
 
-    // create spsc oe queue for as many symbols as we have
-    std::vector<std::unique_ptr<SPSCOEQueue>> queues;
-    for (ssize_t i = 0; i < symbols.size(); ++i) {
-        queues.push_back(std::make_unique<SPSCOEQueue>(20000));
-    }
 
     // create market data publisher
-    MarketDataPublisher publisher(queues, "239.1.3.37", 12345, "129.74.247.7", async_file);
+    MarketDataPublisher publisher("239.1.3.37", 12345, "129.74.247.7", async_file);
 
-    typedef OrderLadder<SPSC_Subscriber> OrderLadder;
 
-    // create an order ladder for each symbol
-    std::vector<std::unique_ptr<OrderLadder>> ladders;
+    // create broker queues
+    SPSCOEQueue to_client(1000);
+    SPSCOEQueue from_client(1000);
+
+    // create matching engine broker
+    MatchingEngineBroker broker(to_client, from_client, publisher, async_file);
+
+    // add symbols to broker
     for (const auto& symbol : symbols) {
-        ladders.push_back(std::make_unique<OrderLadder>(new SPSC_Subscriber(*queues[symbol.symbol - 1]), symbol.symbol));
+        broker.add_symbol(symbol.symbol);
     }
 
     // create oe_server and client handlers
     std::unordered_map<std::string, oe::user_info> users;
     users["good"] = {"good", "password", 1};
 
-    oe::ClientHandler<OrderLadder> client_handler(users, async_file);
-    client_handler.set_matching_engine(1, ladders[0].get());
-    client_handler.set_matching_engine(2, ladders[1].get());
+    oe::ClientHandler client_handler(from_client, to_client, users, async_file);
 
-    oe::EpollServer<oe::ClientHandler<OrderLadder>> oe_server(client_handler, 1234, async_file);
+    oe::EpollServer<oe::ClientHandler> oe_server(client_handler, 1234, async_file);
 
 
-    std::thread t([&publisher, async_file] {
+    std::thread t([&broker, async_file] {
         set_cpu_affinity(2); // Set affinity to target core
         try {
-            while (true) publisher.process();
+            while (true) broker.process();
         } catch (const std::exception& e) {
             async_file->error("Exception in publisher thread: {}", e.what());
         }

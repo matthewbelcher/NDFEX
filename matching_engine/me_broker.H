@@ -1,0 +1,111 @@
+#pragma once
+
+#include "spsc_oe_queue.H"
+#include "md_mcast.H"
+#include "oe_protocol.H"
+#include "order_ladder.H"
+
+#include <spdlog/logger.h>
+
+namespace ndfex {
+
+/**
+ * Handles the communication between the matching engine and the order entry server.
+ */
+
+class MatchingEngineBroker {
+
+public:
+
+    MatchingEngineBroker(SPSCOEQueue& to_client, SPSCOEQueue& from_client,
+        MarketDataPublisher& publisher,
+        std::shared_ptr<spdlog::logger> logger)
+        : to_client(to_client), from_client(from_client), publisher(publisher), logger(logger)
+    {}
+
+    ~MatchingEngineBroker() {
+        for (auto& [symbol, ladder] : symbol_to_matching_engine) {
+            delete ladder;
+        }
+    }
+
+    void add_symbol(uint32_t symbol) {
+        symbol_to_matching_engine[symbol] = new OrderLadder<MatchingEngineBroker>(this, symbol);
+    }
+
+    void onNewOrder(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {
+        if (quantity > 0) {
+            // don't publish a new order if it was fully filled in the matching engine
+            publisher.publish_new_order(order_id, symbol, side, quantity, price, flags);
+        }
+
+        to_client.emplace(oe::MSG_TYPE::ACK, order_id, symbol, client_seq, side, quantity, price, flags);
+    }
+
+    void onDeleteOrder(uint64_t order_id) {
+        publisher.publish_delete_order(order_id);
+
+        to_client.emplace(oe::MSG_TYPE::CLOSE, order_id, 0, client_seq, md::SIDE::BUY, 0, 0, 0);
+    }
+
+    void onTrade(uint64_t order_id, uint32_t quantity, uint32_t price) {
+        publisher.queue_trade(order_id, quantity, price);
+    }
+
+    void onFill(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {
+        to_client.emplace(oe::MSG_TYPE::FILL, order_id, 0, client_seq, side, quantity, price, flags);
+    }
+
+    void finishedPacket(uint32_t symbol) {
+        publisher.publish_queued_trades(symbol, aggressor_side);
+    }
+
+    void process() {
+        while (from_client.front()) {
+            oe_payload& payload = *from_client.front();
+            client_seq = payload.client_seq;
+
+            // find the matching engine for the symbol
+            auto ladder = symbol_to_matching_engine[payload.symbol];
+            if (!ladder) {
+                throw std::runtime_error("Invalid symbol");
+            }
+
+            switch (payload.msg_type) {
+                case oe::MSG_TYPE::NEW_ORDER:
+                    aggressor_side = payload.side;
+                    ladder->new_order(payload.exch_order_id, payload.side, payload.quantity, payload.price, payload.flags);
+                    break;
+                case oe::MSG_TYPE::DELETE_ORDER:
+                    ladder->delete_order(payload.exch_order_id);
+                    break;
+                case oe::MSG_TYPE::MODIFY_ORDER:
+                    ladder->modify_order(payload.exch_order_id, payload.side, payload.quantity, payload.price);
+                    break;
+                case oe::MSG_TYPE::ACK:
+                case oe::MSG_TYPE::REJECT:
+                case oe::MSG_TYPE::FILL:
+                case oe::MSG_TYPE::CLOSE:
+                case oe::MSG_TYPE::LOGIN:
+                case oe::MSG_TYPE::LOGIN_RESPONSE:
+                case oe::MSG_TYPE::ERROR:
+                    throw std::runtime_error("Invalid message type " + std::to_string(static_cast<uint8_t>(payload.msg_type)));
+            }
+            finishedPacket(payload.symbol);
+        }
+    }
+
+private:
+
+    uint32_t client_seq{0};
+    md::SIDE aggressor_side{md::SIDE::BUY};
+
+    SPSCOEQueue& to_client;
+    SPSCOEQueue& from_client;
+    MarketDataPublisher& publisher;
+    std::unordered_map<uint32_t, OrderLadder<MatchingEngineBroker>*> symbol_to_matching_engine;
+
+    std::shared_ptr<spdlog::logger> logger;
+};
+
+} // namespace ndfex

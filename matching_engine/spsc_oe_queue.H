@@ -1,3 +1,5 @@
+#pragma once
+
 #include "order_entry/oe_protocol.H"
 #include "include/rigtorp/SPSCQueue.h"
 
@@ -6,17 +8,24 @@ namespace ndfex {
 using namespace oe;
 
 struct oe_payload {
-    MSG_TYPE msg_type;
+    oe::MSG_TYPE msg_type;
     uint64_t exch_order_id;
     uint32_t symbol;
+
+    uint32_t client_seq;
+
     md::SIDE side;
     uint32_t quantity;
     uint32_t price;
 
     uint8_t flags;
 
-    oe_payload(MSG_TYPE msg_type, uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) :
-        msg_type(msg_type), exch_order_id(order_id), symbol(symbol), side(side), quantity(quantity), price(price), flags(flags) {}
+    oe_payload(oe::MSG_TYPE msg_type, uint64_t order_id, uint32_t symbol, uint32_t client_seq, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) :
+        msg_type(msg_type), exch_order_id(order_id), symbol(symbol), client_seq(client_seq), side(side), quantity(quantity), price(price), flags(flags) {}
+
+    /*    bool is_partial_fill() const {
+        return flags & oe::FILL_FLAGS::PARTIAL_FILL;
+    }*/
 
 } __attribute__((packed));
 

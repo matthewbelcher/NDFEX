@@ -2,7 +2,7 @@
 
 #include "oe_protocol.H"
 #include "matching_engine/utils.H"
-#include "matching_engine/exceptions.H"
+#include "matching_engine/spsc_oe_queue.H"
 
 #include <spdlog/logger.h>
 
@@ -22,6 +22,7 @@ struct session_info {
     uint64_t session_id;
     uint32_t client_id;
     uint32_t last_seq_num;
+    uint32_t exch_seq_num;
 };
 
 struct user_info {
@@ -35,15 +36,26 @@ struct open_order {
     uint32_t symbol;
 };
 
-template <typename OrderHandler>
+struct exch_order {
+    uint32_t client_id;
+    uint64_t order_id;
+};
+
 class ClientHandler {
 
     typedef std::unordered_map<uint64_t, open_order> open_orders_map;
+    typedef std::unordered_map<uint64_t, exch_order> exch_orders_map;
 
     public:
 
-        ClientHandler(std::unordered_map<std::string, user_info>& users, std::shared_ptr<spdlog::logger> logger)
-            : users(users), logger(logger) {}
+        ClientHandler(
+            SPSCOEQueue& to_matching_engine,
+            SPSCOEQueue& from_matching_engine,
+            std::unordered_map<std::string, user_info>& users, std::shared_ptr<spdlog::logger> logger)
+            : to_matching_engine(to_matching_engine),
+              from_matching_engine(from_matching_engine),
+              users(users),
+              logger(logger) {}
 
         void on_login(int sock_fd, const login& msg) {
             logger->info("Received login request from client {}", msg.header.client_id);
@@ -70,7 +82,7 @@ class ClientHandler {
                     response.status = static_cast<uint8_t>(LOGIN_STATUS::INVALID_CLIENT_ID);
                 }
 
-                ssize_t len = write(sock_fd, reinterpret_cast<char*>(&response), sizeof(login_response));
+                ssize_t len = write_msg(sock_fd, response);
                 // don't care if this send fails since we are closing the socket anyway
                 (void) len;
 
@@ -81,49 +93,49 @@ class ClientHandler {
             }
 
             // check if this client id is already logged in
-            for (const auto& [other_fd, session] : sock_to_session_info) {
-                if (session.client_id == msg.header.client_id) {
+            if (client_to_sock_fd.find(msg.header.client_id) != client_to_sock_fd.end()) {
+                auto other_fd = client_to_sock_fd[msg.header.client_id];
+                auto session = sock_to_session_info[other_fd];
 
-                    logger->warn("Duplicate login attempt from client {}", msg.header.client_id);
+                logger->warn("Duplicate login attempt from client {}", msg.header.client_id);
 
-                    // send login response with status = 2
-                    login_response response;
-                    response.header.length = sizeof(login_response);
-                    response.header.msg_type = static_cast<uint8_t>(MSG_TYPE::LOGIN_RESPONSE);
-                    response.header.seq_num = msg.header.seq_num;
-                    response.header.client_id = msg.header.client_id;
-                    response.status = static_cast<uint8_t>(LOGIN_STATUS::SESSION_ALREADY_ACTIVE);
+                // send login response with status = 2
+                login_response response;
+                response.header.length = sizeof(login_response);
+                response.header.msg_type = static_cast<uint8_t>(MSG_TYPE::LOGIN_RESPONSE);
+                response.header.seq_num = msg.header.seq_num;
+                response.header.client_id = msg.header.client_id;
+                response.status = static_cast<uint8_t>(LOGIN_STATUS::SESSION_ALREADY_ACTIVE);
 
-                    ssize_t len = write(sock_fd, reinterpret_cast<char*>(&response), sizeof(login_response));
-                    if (len == -1) {
-                        log_network_send_error(sock_fd, len);
-                    }
-
-                    shutdown(sock_fd, SHUT_RDWR);
-                    close(sock_fd);
-
-                    // send an error message to the other socket
-                    error_message err_msg;
-                    err_msg.header.length = sizeof(error_message);
-                    err_msg.header.msg_type = static_cast<uint8_t>(MSG_TYPE::ERROR);
-                    err_msg.header.seq_num = session.last_seq_num;
-                    err_msg.header.client_id = session.client_id;
-                    err_msg.error_code = static_cast<uint8_t>(REJECT_REASON::DUPLICATE_LOGIN);
-                    strncpy(reinterpret_cast<char*>(err_msg.error_message), "Duplicate login", sizeof(err_msg.error_message));
-                    err_msg.error_message_length = strlen(reinterpret_cast<char*>(err_msg.error_message));
-
-                    len = write(other_fd, reinterpret_cast<char*>(&err_msg), sizeof(error_message));
-                    if (len == -1) {
-                        log_network_send_error(other_fd, len);
-                    }
-
-                    cancel_all_client_orders(msg.header.client_id);
-
-                    // close the other socket
-                    shutdown(other_fd, SHUT_RDWR);
-                    close(other_fd);
-                    return;
+                ssize_t len = write_msg(sock_fd, response);
+                if (len == -1) {
+                    log_network_send_error(sock_fd, len);
                 }
+
+                shutdown(sock_fd, SHUT_RDWR);
+                close(sock_fd);
+
+                // send an error message to the other socket
+                error_message err_msg;
+                err_msg.header.length = sizeof(error_message);
+                err_msg.header.msg_type = static_cast<uint8_t>(MSG_TYPE::ERROR);
+                err_msg.header.seq_num = session.last_seq_num;
+                err_msg.header.client_id = session.client_id;
+                err_msg.error_code = static_cast<uint8_t>(REJECT_REASON::DUPLICATE_LOGIN);
+                strncpy(reinterpret_cast<char*>(err_msg.error_message), "Duplicate login", sizeof(err_msg.error_message));
+                err_msg.error_message_length = strlen(reinterpret_cast<char*>(err_msg.error_message));
+
+                len = write_msg(other_fd, err_msg);
+                if (len == -1) {
+                    log_network_send_error(other_fd, len);
+                }
+
+                cancel_all_client_orders(msg.header.client_id);
+
+                // close the other socket
+                shutdown(other_fd, SHUT_RDWR);
+                close(other_fd);
+                return;
             }
 
             // generate session id
@@ -141,7 +153,7 @@ class ClientHandler {
             response.status = static_cast<uint8_t>(LOGIN_STATUS::SUCCESS);
             response.session_id = session_id;
 
-            ssize_t len = write(sock_fd, reinterpret_cast<char*>(&response), sizeof(login_response));
+            ssize_t len = write_msg(sock_fd, response);
             if (len == -1) {
                 // login was successful but we could not send a response, something went wrong
                 log_network_send_error(sock_fd, len);
@@ -161,12 +173,7 @@ class ClientHandler {
                 return;
             }
 
-            auto it = symbol_to_matching_engine.find(msg.symbol);
-            if (it == symbol_to_matching_engine.end()) {
-                logger->warn("Unknown symbol for new order from client {}", msg.header.client_id);
-                send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SYMBOL), msg.order_id);
-                return;
-            }
+           // TODO validate symbol and price / quantity for order
 
             auto& client_order_id_map = client_to_open_orders[msg.header.client_id];
             if (client_order_id_map.find(msg.order_id) != client_order_id_map.end()) {
@@ -179,8 +186,9 @@ class ClientHandler {
 
             uint64_t exch_order_id = nanotime();
             client_order_id_map[msg.order_id] = {exch_order_id, msg.symbol};
+            exch_to_client_orders[exch_order_id] = {msg.header.client_id, msg.order_id};
 
-            it->second->new_order(exch_order_id, msg.side, msg.quantity, msg.price, msg.flags);
+            to_matching_engine.emplace(MSG_TYPE::NEW_ORDER, exch_order_id, msg.symbol, msg.header.seq_num, msg.side, msg.quantity, msg.price, msg.flags);
         }
 
         void on_delete_order(int sock_fd, const delete_order& msg) {
@@ -199,14 +207,8 @@ class ClientHandler {
                 return;
             }
 
-            try {
-                auto client_order = client_to_open_orders.at(msg.header.client_id).at(msg.order_id);
-                auto matching_engine = symbol_to_matching_engine.find(client_order.symbol);
-                matching_engine->second->delete_order(client_order.exch_order_id);
-            } catch (const OrderNotFoundException& e) {
-                logger->warn("Order not found for delete order from client {}", msg.header.client_id);
-                send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(REJECT_REASON::UKNOWN_ORDER_ID), msg.order_id);
-            }
+            auto client_order = client_to_open_orders.at(msg.header.client_id).at(msg.order_id);
+            to_matching_engine.emplace(MSG_TYPE::DELETE_ORDER, client_order.exch_order_id, client_order.symbol, msg.header.seq_num, md::SIDE::BUY, 0, 0, 0);
         }
 
         void on_modify_order(int sock_fd, const modify_order& msg) {
@@ -224,30 +226,140 @@ class ClientHandler {
                 return;
             }
 
-            try {
-                auto client_order = client_to_open_orders.at(msg.header.client_id).at(msg.order_id);
-                auto matching_engine = symbol_to_matching_engine.find(client_order.symbol);
-                matching_engine->second->modify_order(client_order.exch_order_id, msg.side, msg.quantity, msg.price);
-            } catch (const OrderNotFoundException& e) {
-                logger->warn("Order not found for modify order from client {}", msg.header.client_id);
-                send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(REJECT_REASON::UKNOWN_ORDER_ID), msg.order_id);
-            }
+            // TODO validate price / quantity for symbol
+
+            auto client_order = client_to_open_orders.at(msg.header.client_id).at(msg.order_id);
+            to_matching_engine.emplace(MSG_TYPE::MODIFY_ORDER, client_order.exch_order_id, client_order.symbol,
+                                        msg.header.seq_num, msg.side, msg.quantity, msg.price, 0);
         }
 
-        void set_matching_engine(uint32_t symbol, OrderHandler* matching_engine) {
-            symbol_to_matching_engine[symbol] = matching_engine;
+        void process() {
+            while (from_matching_engine.front()) {
+                oe_payload& payload = *from_matching_engine.front();
+                auto it = exch_to_client_orders.find(payload.exch_order_id);
+                if (it == exch_to_client_orders.end()) {
+                    logger->warn("Unknown exch order id {}", payload.exch_order_id);
+                    from_matching_engine.pop();
+                    continue;
+                }
+
+                uint32_t client_id = exch_to_client_orders[payload.exch_order_id].client_id;
+                uint64_t client_order_id = exch_to_client_orders[payload.exch_order_id].order_id;
+
+                switch (payload.msg_type) {
+                    case MSG_TYPE::ACK: {
+                        order_ack ack;
+                        ack.header.msg_type = static_cast<uint8_t>(MSG_TYPE::ACK);
+                        ack.order_id = client_order_id;
+                        ack.exch_order_id = payload.exch_order_id;
+                        ack.quantity = payload.quantity;
+                        ack.price = payload.price;
+
+                        int sock_fd = get_sock_fd(client_id);
+                        if (sock_fd == -1) {
+                            logger->warn("Client {} not found for ack", client_id);
+                            break;
+                        }
+
+                        update_last_seq_num(sock_fd, payload.client_seq);
+
+                        ssize_t len = write_msg(sock_fd, ack);
+                        if (len == -1) {
+                            log_network_send_error(sock_fd, len);
+
+                            // close the socket
+                            shutdown(sock_fd, SHUT_RDWR);
+                            close(sock_fd);
+                        }
+                        break;
+                    }
+                    case MSG_TYPE::FILL: {
+                        order_fill fill;
+                        fill.header.msg_type = static_cast<uint8_t>(MSG_TYPE::FILL);
+                        fill.order_id = client_order_id;
+                        fill.quantity = payload.quantity;
+                        fill.price = payload.price;
+                        fill.flags = payload.flags;
+
+                        int sock_fd = get_sock_fd(client_id);
+                        if (sock_fd == -1) {
+                            logger->warn("Client {} not found for fill", client_id);
+                            break;
+                        }
+
+                        update_last_seq_num(sock_fd, payload.client_seq);
+
+                        ssize_t len = write_msg(sock_fd, fill);
+                        if (len == -1) {
+                            log_network_send_error(sock_fd, len);
+
+                            // close the socket
+                            shutdown(sock_fd, SHUT_RDWR);
+                            close(sock_fd);
+                        }
+
+                        // remove the order if it was fully filled
+                        if (fill.flags & static_cast<uint8_t>(FILL_FLAGS::CLOSED)) {
+                            client_to_open_orders[client_id].erase(client_order_id);
+                            exch_to_client_orders.erase(payload.exch_order_id);
+                        }
+                        break;
+                    }
+                    case MSG_TYPE::CLOSE: {
+                        order_closed closed;
+                        closed.header.msg_type = static_cast<uint8_t>(MSG_TYPE::CLOSE);
+                        closed.order_id = client_order_id;
+
+                        int sock_fd = get_sock_fd(client_id);
+                        if (sock_fd == -1) {
+                            logger->warn("Client {} not found for close", client_id);
+                            break;
+                        }
+
+                        update_last_seq_num(sock_fd, payload.client_seq);
+
+                        ssize_t len = write_msg(sock_fd, closed);
+                        if (len == -1) {
+                            log_network_send_error(sock_fd, len);
+
+                            // close the socket
+                            shutdown(sock_fd, SHUT_RDWR);
+                            close(sock_fd);
+                        }
+
+                        // remove the order from the client's open orders
+                        client_to_open_orders[client_id].erase(client_order_id);
+                        exch_to_client_orders.erase(payload.exch_order_id);
+                        break;
+                    }
+                    default:
+                        logger->warn("Unknown message type from matching engine: {}", static_cast<uint8_t>(payload.msg_type));
+                        break;
+                }
+                from_matching_engine.pop();
+            }
         }
 
     private:
 
         // write all bytes to the socket even in non-blocking mode TODO (maybe add a timeout)
-        ssize_t write(int sock_fd, const char* buf, ssize_t len) {
+        template <typename Msg>
+        ssize_t write_msg(int sock_fd, Msg& msg) {
+
+            // fill in the header fields
+            auto session_info = sock_to_session_info[sock_fd];
+            msg.header.length = sizeof(Msg);
+            msg.header.version = OE_PROTOCOL_VERSION;
+            msg.header.seq_num = session_info.exch_seq_num++;
+            msg.header.last_seq_num = session_info.last_seq_num;
+            msg.header.client_id = session_info.client_id;
+
             // timeout after 10 milliseconds
             uint64_t start = nanotime();
 
             ssize_t bytes_sent = 0;
-            while (bytes_sent < len) {
-                ssize_t n = ::write(sock_fd, buf + bytes_sent, len - bytes_sent);
+            while (bytes_sent < msg.header.length) {
+                ssize_t n = ::write(sock_fd, reinterpret_cast<char*>(&msg) + bytes_sent, msg.header.length - bytes_sent);
                 if (n == -1) {
                     if (errno == EAGAIN || errno == EWOULDBLOCK) {
                         continue;
@@ -264,6 +376,10 @@ class ClientHandler {
             return bytes_sent;
         }
 
+        void update_last_seq_num(int sock_fd, uint32_t seq_num) {
+            sock_to_session_info[sock_fd].last_seq_num = seq_num;
+        }
+
         void log_network_send_error(int sock_fd, ssize_t err) {
             logger->error("Failed to send message to client {}: {}", sock_fd, strerror(errno));
         }
@@ -277,7 +393,7 @@ class ClientHandler {
             reject.reject_reason = reason_code;
             reject.order_id = order_id;
 
-            ssize_t len = write(sock_fd, reinterpret_cast<char*>(&reject), sizeof(order_reject));
+            ssize_t len = write_msg(sock_fd, reject);
             if (len == -1) {
                 log_network_send_error(sock_fd, len);
 
@@ -295,10 +411,7 @@ class ClientHandler {
             }
 
             for (const auto& [client_order_id, exch_order_id] : it->second) {
-                auto me_it = symbol_to_matching_engine.find(exch_order_id.symbol);
-                if (me_it != symbol_to_matching_engine.end()) {
-                    me_it->second->delete_order(exch_order_id.exch_order_id);
-                }
+                to_matching_engine.emplace(MSG_TYPE::DELETE_ORDER, exch_order_id.exch_order_id, 0, 0, md::SIDE::BUY, 0, 0, 0);
             }
         }
 
@@ -310,13 +423,25 @@ class ClientHandler {
             return it->second.session_id == session_id && it->second.client_id == client_id;
         }
 
+        int get_sock_fd(uint32_t client_id) {
+            auto it = client_to_sock_fd.find(client_id);
+            if (it == client_to_sock_fd.end()) {
+                return -1;
+            }
+            return it->second;
+        }
+
+        SPSCOEQueue& to_matching_engine;
+        SPSCOEQueue& from_matching_engine;
+
         std::unordered_map<std::string, user_info>& users;
         std::shared_ptr<spdlog::logger> logger;
 
         std::unordered_map<int, session_info> sock_to_session_info;
+        std::unordered_map<uint32_t, int> client_to_sock_fd;
         std::unordered_map<uint32_t, open_orders_map> client_to_open_orders;
 
-        std::unordered_map<uint32_t, OrderHandler*> symbol_to_matching_engine;
+        exch_orders_map exch_to_client_orders;
 
         std::random_device rd;
         std::mt19937 gen{rd()};

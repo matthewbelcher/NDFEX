@@ -8,6 +8,7 @@ public:
     std::vector<uint64_t> new_orders;
     std::vector<uint64_t> deleted_orders;
     std::vector<std::tuple<uint64_t, uint32_t, uint32_t>> trades;
+    std::vector<std::tuple<uint64_t, ndfex::md::SIDE, uint32_t, uint32_t>> fills;
 
     void onNewOrder(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {
         new_orders.push_back(order_id);
@@ -19,6 +20,10 @@ public:
 
     void onTrade(uint64_t order_id, uint32_t quantity, uint32_t price) {
         trades.emplace_back(order_id, quantity, price);
+    }
+
+    void onFill(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {
+        fills.emplace_back(order_id, side, quantity, price);
     }
 };
 
@@ -54,6 +59,18 @@ TEST(OrderLadderTest, SimpleCrossTrade) {
     EXPECT_EQ(std::get<0>(subscriber.trades[0]), 1);
     EXPECT_EQ(std::get<1>(subscriber.trades[0]), 10);
     EXPECT_EQ(std::get<2>(subscriber.trades[0]), 50);
+
+    ASSERT_EQ(subscriber.fills.size(), 2);
+    EXPECT_EQ(std::get<0>(subscriber.fills[0]), 1);
+    EXPECT_EQ(std::get<1>(subscriber.fills[0]), ndfex::md::SIDE::BUY);
+    EXPECT_EQ(std::get<2>(subscriber.fills[0]), 10);
+    EXPECT_EQ(std::get<3>(subscriber.fills[0]), 50);
+
+    EXPECT_EQ(std::get<0>(subscriber.fills[1]), 2);
+    EXPECT_EQ(std::get<1>(subscriber.fills[1]), ndfex::md::SIDE::SELL);
+    EXPECT_EQ(std::get<2>(subscriber.fills[1]), 10);
+    EXPECT_EQ(std::get<3>(subscriber.fills[1]), 50);
+
 }
 
 TEST(OrderLadderTest, CrossMultipleLevels) {
@@ -79,6 +96,37 @@ TEST(OrderLadderTest, CrossMultipleLevels) {
     EXPECT_EQ(std::get<0>(subscriber.trades[2]), 1);
     EXPECT_EQ(std::get<1>(subscriber.trades[2]), 5);
     EXPECT_EQ(std::get<2>(subscriber.trades[2]), 50);
+
+    ASSERT_EQ(subscriber.fills.size(), 6);
+    EXPECT_EQ(std::get<0>(subscriber.fills[0]), 3);
+    EXPECT_EQ(std::get<1>(subscriber.fills[0]), ndfex::md::SIDE::BUY);
+    EXPECT_EQ(std::get<2>(subscriber.fills[0]), 10);
+    EXPECT_EQ(std::get<3>(subscriber.fills[0]), 60);
+
+    EXPECT_EQ(std::get<0>(subscriber.fills[1]), 4);
+    EXPECT_EQ(std::get<1>(subscriber.fills[1]), ndfex::md::SIDE::SELL);
+    EXPECT_EQ(std::get<2>(subscriber.fills[1]), 10);
+    EXPECT_EQ(std::get<3>(subscriber.fills[1]), 60);
+
+    EXPECT_EQ(std::get<0>(subscriber.fills[2]), 2);
+    EXPECT_EQ(std::get<1>(subscriber.fills[2]), ndfex::md::SIDE::BUY);
+    EXPECT_EQ(std::get<2>(subscriber.fills[2]), 10);
+    EXPECT_EQ(std::get<3>(subscriber.fills[2]), 55);
+
+    EXPECT_EQ(std::get<0>(subscriber.fills[3]), 4);
+    EXPECT_EQ(std::get<1>(subscriber.fills[3]), ndfex::md::SIDE::SELL);
+    EXPECT_EQ(std::get<2>(subscriber.fills[3]), 10);
+    EXPECT_EQ(std::get<3>(subscriber.fills[3]), 55);
+
+    EXPECT_EQ(std::get<0>(subscriber.fills[4]), 1);
+    EXPECT_EQ(std::get<1>(subscriber.fills[4]), ndfex::md::SIDE::BUY);
+    EXPECT_EQ(std::get<2>(subscriber.fills[4]), 5);
+    EXPECT_EQ(std::get<3>(subscriber.fills[4]), 50);
+
+    EXPECT_EQ(std::get<0>(subscriber.fills[5]), 4);
+    EXPECT_EQ(std::get<1>(subscriber.fills[5]), ndfex::md::SIDE::SELL);
+    EXPECT_EQ(std::get<2>(subscriber.fills[5]), 5);
+    EXPECT_EQ(std::get<3>(subscriber.fills[5]), 50);
 }
 
 TEST(OrderLadderTest, VeryComplicatedTest) {

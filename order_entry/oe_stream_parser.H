@@ -35,9 +35,9 @@ public:
         auto& partial_message = sock_to_partial_messages[sock_fd];
         partial_message.insert(partial_message.end(), buf, buf + len);
 
-        while (partial_message.size() >= sizeof(oe_header)) {
+        while (partial_message.size() >= sizeof(oe_request_header)) {
 
-            oe_header* header = reinterpret_cast<oe_header*>(partial_message.data());
+            oe_request_header* header = reinterpret_cast<oe_request_header*>(partial_message.data());
             if (partial_message.size() < header->length) {
                 // not enough bytes to parse the full message
                 return;

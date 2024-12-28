@@ -26,6 +26,7 @@ namespace ndfex::oe {
 
         std::shared_ptr<spdlog::logger> logger;
         StreamParser<ClientHandler> parser;
+        ClientHandler& handler;
         char buf[1500];
 
     };

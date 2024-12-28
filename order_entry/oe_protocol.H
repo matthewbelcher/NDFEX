@@ -13,6 +13,8 @@
 
 namespace ndfex::oe {
 
+const uint8_t OE_PROTOCOL_VERSION = 1;
+
 enum class MSG_TYPE: uint8_t {
     // Requests
     NEW_ORDER = 1,
@@ -53,6 +55,17 @@ enum class LOGIN_STATUS: uint8_t {
     SESSION_ALREADY_ACTIVE = 8,
     DUPLICATE_LOGIN = 9,
     INVALID_CLIENT_ID = 10,
+};
+
+enum class ORDER_FLAGS: uint8_t {
+    NONE = 0,
+    IOC = 1,
+};
+
+enum class FILL_FLAGS: uint8_t {
+    NONE = 0,
+    PARTIAL_FILL = 1,
+    CLOSED = 2,
 };
 
 struct oe_request_header {
