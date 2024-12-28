@@ -34,6 +34,7 @@ enum class MSG_TYPE: uint8_t {
 };
 
 enum class REJECT_REASON: uint8_t {
+    NONE = 0,
     UNKNOWN_SYMBOL = 1,
     INVALID_ORDER = 2,
     DUPLICATE_ORDER_ID = 3,

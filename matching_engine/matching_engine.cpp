@@ -3,6 +3,7 @@
 #include "spsc_oe_queue.H"
 #include "me_broker.H"
 #include "order_ladder.H"
+#include "symbol_definition.H"
 
 #include "order_entry/oe_server.H"
 #include "order_entry/oe_client_handler.H"
@@ -22,21 +23,11 @@ void set_cpu_affinity(int cpu) {
     }
 }
 
-struct symbol_info {
-    uint32_t symbol;
-    uint32_t tick_size;
-    uint32_t min_lot_size;
-    uint32_t max_lot_size;
-
-    int32_t max_price;
-    int32_t min_price;
-};
-
 using namespace ndfex;
 
 int main(int argc, char** argv) {
 
-    std::vector<symbol_info> symbols = {
+    std::vector<symbol_definition> symbols = {
         {1, 10, 1, 1000, 10000000, 0}, // GOLD
         {2, 5, 1, 1000, 10000000, 0}, // BLUE
     };
@@ -73,7 +64,16 @@ int main(int argc, char** argv) {
     std::unordered_map<std::string, oe::user_info> users;
     users["good"] = {"good", "password", 1};
 
-    oe::ClientHandler client_handler(from_client, to_client, users, async_file);
+    auto symbols_map = [] (const std::vector<symbol_definition>& symbols) {
+        std::unordered_map<uint32_t, symbol_definition> map;
+        for (const auto& symbol : symbols) {
+            map[symbol.symbol] = symbol;
+        }
+        return map;
+    }(symbols);
+
+    oe::OrderEntryValidator validator(symbols_map, async_file);
+    oe::ClientHandler client_handler(validator, from_client, to_client, users, async_file);
 
     oe::EpollServer<oe::ClientHandler> oe_server(client_handler, 1234, async_file);
 

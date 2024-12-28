@@ -28,7 +28,7 @@ TEST(OEStreamParserTest, NewOrder) {
     MockHandler handler;
     auto logger = spdlog::stdout_color_mt("test_logger_new_order");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
+    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
 
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     parser.parse(0, reinterpret_cast<char*>(&msg), sizeof(new_order));
@@ -41,7 +41,7 @@ TEST(OEStreamParserTest, NewOrderPartial) {
     MockHandler handler;
     auto logger = spdlog::stdout_color_mt("test_logger_new_order_partial");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
+    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
     parser.parse(0, buf.data(), 1);
@@ -55,7 +55,7 @@ TEST(OEStreamParserTest, NewOrderMultiple) {
     MockHandler handler;
     auto logger = spdlog::stdout_color_mt("test_logger_new_order_multiple");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
+    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
     parser.parse(0, buf.data(), buf.size());
@@ -70,7 +70,7 @@ TEST(OEStreamParserTest, NewOrderMultipleInSameBuffer) {
     MockHandler handler;
     auto logger = spdlog::stdout_color_mt("test_logger_new_order_multiple_same_buffer");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
+    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
     buf += buf;
@@ -86,7 +86,7 @@ TEST(OEStreamParserTest, ErrorOnUnknownType) {
     MockHandler handler;
     auto logger = spdlog::stdout_color_mt("test_logger_error_on_unknown_type");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_header header = {sizeof(new_order), 0, 0, 0};
+    oe_request_header header = {sizeof(new_order), 0, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
 

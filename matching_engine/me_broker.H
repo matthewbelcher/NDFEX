@@ -52,8 +52,8 @@ public:
         publisher.queue_trade(order_id, quantity, price);
     }
 
-    void onFill(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {
-        to_client.emplace(oe::MSG_TYPE::FILL, order_id, 0, client_seq, side, quantity, price, flags);
+    void onFill(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {
+        to_client.emplace(oe::MSG_TYPE::FILL, order_id, symbol, client_seq, side, quantity, price, flags);
     }
 
     void finishedPacket(uint32_t symbol) {
