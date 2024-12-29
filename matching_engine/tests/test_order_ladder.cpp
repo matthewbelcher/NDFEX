@@ -5,29 +5,30 @@
 
 class MockSubscriber {
 public:
-    std::vector<uint64_t> new_orders;
-    std::vector<uint64_t> deleted_orders;
-    std::vector<std::tuple<uint64_t, ndfex::md::SIDE, uint32_t, uint32_t>> modified_orders;
-    std::vector<std::tuple<uint64_t, uint32_t, uint32_t>> trades;
-    std::vector<std::tuple<uint64_t, ndfex::md::SIDE, uint32_t, uint32_t>> fills;
 
-    void onNewOrder(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {
-        new_orders.push_back(order_id);
+    std::vector<std::tuple<uint64_t, ndfex::md::SIDE, uint32_t, int32_t>> new_orders;
+    std::vector<uint64_t> deleted_orders;
+    std::vector<std::tuple<uint64_t, ndfex::md::SIDE, uint32_t, int32_t>> modified_orders;
+    std::vector<std::tuple<uint64_t, uint32_t, int32_t>> trades;
+    std::vector<std::tuple<uint64_t, ndfex::md::SIDE, uint32_t, int32_t>> fills;
+
+    void onNewOrder(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) {
+        new_orders.emplace_back(order_id, side, quantity, price);
     }
 
     void onDeleteOrder(uint64_t order_id) {
         deleted_orders.push_back(order_id);
     }
 
-    void onModifyOrder(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, uint32_t price) {
+    void onModifyOrder(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, int32_t price) {
         modified_orders.emplace_back(order_id, side, quantity, price);
     }
 
-    void onTrade(uint64_t order_id, uint32_t quantity, uint32_t price) {
+    void onTrade(uint64_t order_id, uint32_t quantity, int32_t price) {
         trades.emplace_back(order_id, quantity, price);
     }
 
-    void onFill(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {
+    void onFill(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) {
         fills.emplace_back(order_id, side, quantity, price);
     }
 };
@@ -39,7 +40,7 @@ TEST(OrderLadderTest, NewOrder) {
     orderLadder.new_order(1, ndfex::md::SIDE::SELL, 10, 50, 0);
 
     ASSERT_EQ(subscriber.new_orders.size(), 1);
-    EXPECT_EQ(subscriber.new_orders[0], 1);
+    EXPECT_EQ(std::get<0>(subscriber.new_orders[0]), 1);
 }
 
 TEST(OrderLadderTest, DeleteOrder) {
@@ -341,6 +342,85 @@ TEST(OrderLadderTest, PartialFillModifyAutomaticallyClose) {
 
     ASSERT_EQ(subscriber.deleted_orders.size(), 1);
     EXPECT_EQ(subscriber.deleted_orders[0], 1);
+}
+
+TEST(OrderLadderTest, PartialFillOnEntryThenModifyAutoClose) {
+    MockSubscriber subscriber;
+    ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber, 1337);
+
+    orderLadder.new_order(1, ndfex::md::SIDE::BUY, 5, 50, 0); // BUY order at 50
+    orderLadder.new_order(2, ndfex::md::SIDE::SELL, 10, 50, 0); // SELL order at 50
+
+    orderLadder.modify_order(2, ndfex::md::SIDE::SELL, 5, 50); // Modify to 5
+
+    ASSERT_EQ(subscriber.trades.size(), 1);
+    EXPECT_EQ(std::get<0>(subscriber.trades[0]), 1);
+    EXPECT_EQ(std::get<1>(subscriber.trades[0]), 5);
+    EXPECT_EQ(std::get<2>(subscriber.trades[0]), 50);
+
+    ASSERT_EQ(subscriber.fills.size(), 2);
+    EXPECT_EQ(std::get<0>(subscriber.fills[0]), 1);
+    EXPECT_EQ(std::get<1>(subscriber.fills[0]), ndfex::md::SIDE::BUY);
+    EXPECT_EQ(std::get<2>(subscriber.fills[0]), 5);
+    EXPECT_EQ(std::get<3>(subscriber.fills[0]), 50);
+
+    EXPECT_EQ(std::get<0>(subscriber.fills[1]), 2);
+    EXPECT_EQ(std::get<1>(subscriber.fills[1]), ndfex::md::SIDE::SELL);
+    EXPECT_EQ(std::get<2>(subscriber.fills[1]), 5);
+    EXPECT_EQ(std::get<3>(subscriber.fills[1]), 50);
+
+    ASSERT_EQ(subscriber.deleted_orders.size(), 1);
+    EXPECT_EQ(subscriber.deleted_orders[0], 2);
+}
+
+TEST(OrderLadderTest, PartialFillOnEntryThenModifyUpThenDownAutoClose) {
+    MockSubscriber subscriber;
+    ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber, 1337);
+
+    orderLadder.new_order(1, ndfex::md::SIDE::BUY, 5, 50, 0); // BUY order at 50
+    orderLadder.new_order(2, ndfex::md::SIDE::SELL, 10, 50, 0); // SELL order at 50
+
+    orderLadder.modify_order(2, ndfex::md::SIDE::SELL, 15, 50); // Modify to 15
+
+    ASSERT_EQ(subscriber.trades.size(), 1);
+    EXPECT_EQ(std::get<0>(subscriber.trades[0]), 1);
+    EXPECT_EQ(std::get<1>(subscriber.trades[0]), 5);
+    EXPECT_EQ(std::get<2>(subscriber.trades[0]), 50);
+
+    ASSERT_EQ(subscriber.fills.size(), 2);
+    EXPECT_EQ(std::get<0>(subscriber.fills[0]), 1);
+    EXPECT_EQ(std::get<1>(subscriber.fills[0]), ndfex::md::SIDE::BUY);
+    EXPECT_EQ(std::get<2>(subscriber.fills[0]), 5);
+    EXPECT_EQ(std::get<3>(subscriber.fills[0]), 50);
+
+    EXPECT_EQ(std::get<0>(subscriber.fills[1]), 2);
+    EXPECT_EQ(std::get<1>(subscriber.fills[1]), ndfex::md::SIDE::SELL);
+    EXPECT_EQ(std::get<2>(subscriber.fills[1]), 5);
+    EXPECT_EQ(std::get<3>(subscriber.fills[1]), 50);
+
+    ASSERT_EQ(subscriber.new_orders.size(), 2);
+    EXPECT_EQ(std::get<0>(subscriber.new_orders[0]), 1);
+    EXPECT_EQ(std::get<1>(subscriber.new_orders[0]), ndfex::md::SIDE::BUY);
+    EXPECT_EQ(std::get<2>(subscriber.new_orders[0]), 5);
+    EXPECT_EQ(std::get<3>(subscriber.new_orders[0]), 50);
+
+    EXPECT_EQ(std::get<0>(subscriber.new_orders[1]), 2);
+    EXPECT_EQ(std::get<1>(subscriber.new_orders[1]), ndfex::md::SIDE::SELL);
+    EXPECT_EQ(std::get<2>(subscriber.new_orders[1]), 5);
+    EXPECT_EQ(std::get<3>(subscriber.new_orders[1]), 50);
+
+    EXPECT_EQ(subscriber.modified_orders.size(), 1);
+    EXPECT_EQ(std::get<0>(subscriber.modified_orders[0]), 2);
+    EXPECT_EQ(std::get<1>(subscriber.modified_orders[0]), ndfex::md::SIDE::SELL);
+    EXPECT_EQ(std::get<2>(subscriber.modified_orders[0]), 10);
+    EXPECT_EQ(std::get<3>(subscriber.modified_orders[0]), 50);
+
+    ASSERT_EQ(subscriber.deleted_orders.size(), 0);
+
+    orderLadder.modify_order(2, ndfex::md::SIDE::SELL, 5, 50); // Modify to 5
+
+    ASSERT_EQ(subscriber.deleted_orders.size(), 1);
+    EXPECT_EQ(subscriber.deleted_orders[0], 2);
 }
 
 int main(int argc, char **argv) {
