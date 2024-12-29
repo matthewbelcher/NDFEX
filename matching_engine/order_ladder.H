@@ -22,6 +22,7 @@ namespace ndfex {
             uint64_t order_id;
             uint64_t timestamp;
             uint32_t quantity;
+            uint32_t filled_quantity;
             uint32_t price;
             md::SIDE side;
             uint8_t flags;
@@ -53,8 +54,10 @@ namespace ndfex {
 
         ~OrderLadder() = default;
 
-        void new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags);
+        template <bool notify = true>
+        void new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags, uint32_t filled_quantity = 0);
 
+        template <bool notify = true>
         void delete_order(uint64_t order_id);
 
         void modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price);
@@ -66,16 +69,35 @@ namespace ndfex {
                    PriceLevels& opposite_side_price_levels);
 
         template <typename PriceLevels>
-        void handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags, PriceLevels& price_levels);
+        void handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags, PriceLevels& price_levels,
+                              bool notify, uint32_t filled_quantity);
 
         template <typename PriceLevels>
         void handle_delete_order(uint64_t order_id, PriceLevels& price_levels);
     };
 
     template <typename Subscriber>
-    template <typename PriceLevels>
-    void OrderLadder<Subscriber>::handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags, PriceLevels& price_levels) {
+    template <bool notify>
+    void OrderLadder<Subscriber>::new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags,
+                                            uint32_t filled_quantity) {
+        if (side == md::SIDE::BUY) {
+            handle_new_order(order_id, side, quantity, price, flags, buy_levels, notify, filled_quantity);
+        } else {
+            handle_new_order(order_id, side, quantity, price, flags, sell_levels, notify, filled_quantity);
+        }
+    }
 
+    template <typename Subscriber>
+    template <typename PriceLevels>
+    void OrderLadder<Subscriber>::handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags,
+                                                   PriceLevels& price_levels, bool notify, uint32_t filled_quantity) {
+        if (quantity > filled_quantity) {
+            quantity = quantity - filled_quantity;
+        } else {
+            throw std::runtime_error("filled quantity > quantity on new order!");
+        }
+
+        uint32_t prematch_quantity = quantity;
         if (side == md::SIDE::BUY) {
             match(order_id, side, quantity, price, sell_levels);
         } else {
@@ -84,13 +106,18 @@ namespace ndfex {
 
         // IOC orders are not added to the ladder
         if (flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC)) {
-            subscriber->onNewOrder(order_id, symbol, side, quantity, price, flags);
+            if (notify) {
+                subscriber->onNewOrder(order_id, symbol, side, quantity, price, flags);
+                subscriber->onDeleteOrder(order_id);
+            }
             return;
         }
 
         if (quantity == 0) {
             // order is fully matched, still notify subscriber but do not add to the ladder
-            subscriber->onNewOrder(order_id, symbol, side, quantity, price, flags);
+            if (notify) {
+                subscriber->onNewOrder(order_id, symbol, side, quantity, price, flags);
+            }
             return;
         }
 
@@ -99,11 +126,16 @@ namespace ndfex {
             throw std::runtime_error("Order already exists");
         }
 
+        if (quantity > prematch_quantity) {
+            throw std::runtime_error("Impossible");
+        }
+
         // create new order
         Order& order = orders[order_id]; // create new order
         order.order_id = order_id;
         order.timestamp = 0;
         order.quantity = quantity;
+        order.filled_quantity = prematch_quantity - quantity;
         order.price = price;
         order.side = side;
         order.flags = flags;
@@ -122,7 +154,9 @@ namespace ndfex {
             it->second.tail = &orders[order_id];
         }
 
-        subscriber->onNewOrder(order_id, symbol, side, quantity, price, flags);
+        if (notify) {
+            subscriber->onNewOrder(order_id, symbol, side, quantity - filled_quantity, price, flags);
+        }
     }
 
     template <typename Subscriber>
@@ -154,15 +188,7 @@ namespace ndfex {
     }
 
     template <typename Subscriber>
-    void OrderLadder<Subscriber>::new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {
-        if (side == md::SIDE::BUY) {
-            handle_new_order(order_id, side, quantity, price, flags, buy_levels);
-        } else {
-            handle_new_order(order_id, side, quantity, price, flags, sell_levels);
-        }
-    }
-
-    template <typename Subscriber>
+    template <bool notify>
     void OrderLadder<Subscriber>::delete_order(uint64_t order_id) {
         auto it = orders.find(order_id);
         if (it == orders.end()) {
@@ -182,7 +208,10 @@ namespace ndfex {
                 sell_levels.erase(price);
             }
         }
-        subscriber->onDeleteOrder(order_id);
+
+        if (notify) {
+            subscriber->onDeleteOrder(order_id);
+        }
     }
 
     template <typename Subscriber>
@@ -193,14 +222,22 @@ namespace ndfex {
             throw OrderNotFoundException("Order " + std::to_string(order_id) + " does not exist");
         }
 
-        if (it->second.price == price && it->second.side == side) {
-            // price has not changed
-            it->second.quantity = quantity;
+        if (it->second.filled_quantity >= quantity) {
+            delete_order<true>(order_id);
             return;
         }
 
-        delete_order(order_id);
-        new_order(order_id, side, quantity, price, it->second.flags);
+        if (it->second.price == price && it->second.side == side) {
+            // price has not changed
+            it->second.quantity = quantity;
+            subscriber->onModifyOrder(order_id, symbol, side, quantity - it->second.filled_quantity, price);
+            return;
+        }
+
+        delete_order<false>(order_id);
+        new_order<false>(order_id, side, quantity, price, it->second.flags, it->second.filled_quantity);
+
+        subscriber->onModifyOrder(order_id, symbol, side, quantity - it->second.filled_quantity, price);
     }
 
     template <typename Subscriber>
@@ -223,6 +260,7 @@ namespace ndfex {
                     subscriber->onFill(order->order_id, symbol, order->side, order->quantity, order->price, static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED));
 
                     quantity -= order->quantity;
+
                     subscriber->onFill(incoming_order_id, symbol, side, order->quantity, order->price,
                                        static_cast<uint8_t>(quantity > 0 ? oe::FILL_FLAGS::PARTIAL_FILL : oe::FILL_FLAGS::CLOSED));
 
@@ -237,6 +275,7 @@ namespace ndfex {
                     subscriber->onFill(incoming_order_id, symbol, side, quantity, order->price,
                                        static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED));
 
+                    order->filled_quantity = quantity;
                     order->quantity -= quantity;
                     quantity = 0;
                     return;

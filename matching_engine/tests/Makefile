@@ -18,6 +18,8 @@ $(TARGET_DIR):
 test_order_ladder: $(TARGET_DIR) test_order_ladder.o
 	$(CXX) $(CXXFLAGS) -o $(TARGET_DIR)/test_order_ladder test_order_ladder.o  $(LDFLAGS)
 
+test_order_ladder.o: test_order_ladder.cpp ../order_ladder.H
+	$(CXX) $(CXXFLAGS) -c test_order_ladder.cpp -o test_order_ladder.o
 
 test_md_mcast: $(TARGET_DIR) test_md_mcast.o ../md_mcast.o  ../utils.o
 	$(CXX) $(CXXFLAGS) -o $(TARGET_DIR)/test_md_mcast test_md_mcast.o ../md_mcast.o ../utils.o $(LDFLAGS)
@@ -26,7 +28,7 @@ test: $(TARGETS)
 	$(TARGET_DIR)/test_order_ladder
 	$(TARGET_DIR)/test_md_mcast
 
-%.o: %.cpp %.H
+%.o: %.cpp %.H ../order_ladder.H
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:

@@ -6,6 +6,8 @@
 #include "order_ladder.H"
 
 #include <spdlog/logger.h>
+#include <unordered_map>
+#include <memory>
 
 namespace ndfex {
 
@@ -42,6 +44,12 @@ public:
         to_client.emplace(oe::MSG_TYPE::ACK, order_id, symbol, client_seq, side, quantity, price, flags);
     }
 
+    void onModifyOrder(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, uint32_t price) {
+        publisher.publish_modify_order(order_id, side, quantity, price);
+
+        to_client.emplace(oe::MSG_TYPE::ACK, order_id, symbol, client_seq, side, quantity, price, 0);
+    }
+
     void onDeleteOrder(uint64_t order_id) {
         publisher.publish_delete_order(order_id);
 
@@ -72,23 +80,30 @@ public:
             }
 
             switch (payload.msg_type) {
-                case oe::MSG_TYPE::NEW_ORDER:
+                case oe::MSG_TYPE::NEW_ORDER: {
                     aggressor_side = payload.side;
                     ladder->new_order(payload.exch_order_id, payload.side, payload.quantity, payload.price, payload.flags);
                     break;
-                case oe::MSG_TYPE::DELETE_ORDER:
+                }
+                case oe::MSG_TYPE::DELETE_ORDER: {
                     ladder->delete_order(payload.exch_order_id);
                     break;
-                case oe::MSG_TYPE::MODIFY_ORDER:
+                }
+                case oe::MSG_TYPE::MODIFY_ORDER: {
                     ladder->modify_order(payload.exch_order_id, payload.side, payload.quantity, payload.price);
                     break;
-                case oe::MSG_TYPE::ACK:
+                }
                 case oe::MSG_TYPE::REJECT:
+                case oe::MSG_TYPE::LOGIN_RESPONSE:
+                case oe::MSG_TYPE::ERROR: {
+                    // these need to be sent back to the client
+                    to_client.emplace(payload.msg_type, payload.exch_order_id, payload.symbol, client_seq, payload.side, payload.quantity, payload.price, payload.flags);
+                    break;
+                }
+                case oe::MSG_TYPE::ACK:
                 case oe::MSG_TYPE::FILL:
                 case oe::MSG_TYPE::CLOSE:
                 case oe::MSG_TYPE::LOGIN:
-                case oe::MSG_TYPE::LOGIN_RESPONSE:
-                case oe::MSG_TYPE::ERROR:
                     throw std::runtime_error("Invalid message type " + std::to_string(static_cast<uint8_t>(payload.msg_type)));
             }
             finishedPacket(payload.symbol);
