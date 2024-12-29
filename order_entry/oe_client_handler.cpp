@@ -295,6 +295,31 @@ void ClientHandler::process() {
                 exch_to_client_orders.erase(payload.exch_order_id);
                 break;
             }
+            case oe::MSG_TYPE::REJECT: {
+                int sock_fd = get_sock_fd(client_id);
+                if (sock_fd == -1) {
+                    logger->warn("Client {} not found for reject", client_id);
+                    break;
+                }
+
+                update_last_seq_num(sock_fd, payload.client_seq);
+
+                order_reject reject;
+                reject.header.msg_type = static_cast<uint8_t>(MSG_TYPE::REJECT);
+                reject.reject_reason = payload.flags; // flags is the reject reason
+                reject.order_id = payload.exch_order_id; // no exch order id is generated for rejects so pass this through
+
+                ssize_t len = write_msg(sock_fd, reject);
+                if (len == -1) {
+                    log_network_send_error(sock_fd, len);
+
+                    // close the socket
+                    shutdown(sock_fd, SHUT_RDWR);
+                    close(sock_fd);
+                }
+                break;
+            }
+
             default:
                 logger->warn("Unknown message type from matching engine: {}", static_cast<uint8_t>(payload.msg_type));
                 break;
@@ -344,22 +369,10 @@ void ClientHandler::log_network_send_error(int sock_fd, ssize_t err) {
 }
 
 void ClientHandler::send_order_reject(int sock_fd, uint32_t seq_num, uint32_t client_id, uint8_t reason_code, uint64_t order_id) {
-    order_reject reject;
-    reject.header.msg_type = static_cast<uint8_t>(MSG_TYPE::REJECT);
-    reject.reject_reason = reason_code;
-    reject.order_id = order_id;
+    logger->warn("Sending order reject to client {} seq {} reason {}", client_id, seq_num, static_cast<int>(reason_code));
 
-    update_last_seq_num(sock_fd, seq_num);
-
-    ssize_t len = write_msg(sock_fd, reject);
-    if (len == -1) {
-        log_network_send_error(sock_fd, len);
-
-        // close the socket
-        shutdown(sock_fd, SHUT_RDWR);
-        close(sock_fd);
-    }
-    logger->warn("Sent order reject to client {} seq {} reason {}", client_id, seq_num, static_cast<int>(reason_code));
+    // send the reject message to the client via the broker so the sequence numbers are correct
+    to_matching_engine.emplace(MSG_TYPE::REJECT, order_id, 0, seq_num, md::SIDE::BUY, 0, 0, reason_code);
 }
 
 void ClientHandler::cancel_all_client_orders(uint32_t client_id) {

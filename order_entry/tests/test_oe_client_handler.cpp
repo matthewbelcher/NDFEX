@@ -191,12 +191,16 @@ TEST_F(OEClientHandlerTest, SendOrderWithoutLoggingIn) {
 
     handler.on_new_order(fd[1], msg);
 
-    // read the response
+    /*// read the response
     order_reject reject;
     read(fd[0], &reject, sizeof(order_reject));
 
     EXPECT_EQ(reject.header.msg_type, static_cast<uint8_t>(MSG_TYPE::REJECT));
-    EXPECT_EQ(reject.reject_reason, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SESSION_ID));
+    EXPECT_EQ(reject.reject_reason, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SESSION_ID));*/
+
+    // reject is put into the queue
+    ValidateMatchingEngineQueue validate(to_matching_engine);
+    validate(MSG_TYPE::REJECT, 1, 0, 0, md::SIDE::BUY, 0, 0, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SESSION_ID));
 }
 
 TEST_F(OEClientHandlerTest, SendOrderWithWrongSessionID) {
@@ -240,11 +244,15 @@ TEST_F(OEClientHandlerTest, SendOrderWithWrongSessionID) {
     handler.on_new_order(fd2[1], msg2);
 
     // read the response
-    order_reject reject;
+    /*order_reject reject;
     read(fd2[0], &reject, sizeof(order_reject));
 
     EXPECT_EQ(reject.header.msg_type, static_cast<uint8_t>(MSG_TYPE::REJECT));
-    EXPECT_EQ(reject.reject_reason, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SESSION_ID));
+    EXPECT_EQ(reject.reject_reason, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SESSION_ID));*/
+
+    // reject is put into the queue
+    ValidateMatchingEngineQueue validate(to_matching_engine);
+    validate(MSG_TYPE::REJECT, 1, 0, 0, md::SIDE::BUY, 0, 0, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SESSION_ID));
 }
 
 TEST_F(OEClientHandlerTest, SendOrder) {
@@ -325,12 +333,8 @@ TEST_F(OEClientHandlerTest, SendOrderWithBadSymbol) {
 
     handler.on_new_order(fd[1], msg2);
 
-    // read the response
-    order_reject reject;
-    read(fd[0], &reject, sizeof(order_reject));
-
-    EXPECT_EQ(reject.header.msg_type, static_cast<uint8_t>(MSG_TYPE::REJECT));
-    EXPECT_EQ(reject.reject_reason, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SYMBOL));
+    ValidateMatchingEngineQueue validate(to_matching_engine);
+    validate(MSG_TYPE::REJECT, 1, 0, 0, md::SIDE::BUY, 0, 0, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SYMBOL));
 }
 
 TEST_F(OEClientHandlerTest, SendAnOrderAndThenSendADuplicateLogin) {
@@ -477,12 +481,8 @@ TEST_F(OEClientHandlerTest, MultipleOrderCancelModify) {
 
     handler.on_delete_order(fd[1], msg5);
 
-    // read the response
-    order_reject reject;
-    read(fd[0], &reject, sizeof(order_reject));
-
-    EXPECT_EQ(reject.header.msg_type, static_cast<uint8_t>(MSG_TYPE::REJECT));
-    EXPECT_EQ(reject.reject_reason, static_cast<uint8_t>(REJECT_REASON::UKNOWN_ORDER_ID));
+    // check order cancel was sent
+    validate(MSG_TYPE::REJECT, 1, 0, 3, md::SIDE::BUY, 0, 0, static_cast<uint8_t>(REJECT_REASON::UKNOWN_ORDER_ID));
 }
 
 int main(int argc, char **argv) {

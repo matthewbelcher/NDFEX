@@ -73,33 +73,42 @@ public:
             oe_payload& payload = *from_client.front();
             client_seq = payload.client_seq;
 
-            // find the matching engine for the symbol
-            auto ladder = symbol_to_matching_engine[payload.symbol];
-            if (!ladder) {
-                throw std::runtime_error("Invalid symbol");
-            }
 
             switch (payload.msg_type) {
                 case oe::MSG_TYPE::NEW_ORDER: {
+                    auto ladder = symbol_to_matching_engine[payload.symbol];
+                    if (!ladder) {
+                        throw std::runtime_error("Invalid symbol");
+                    }
+
                     aggressor_side = payload.side;
                     ladder->new_order(payload.exch_order_id, payload.side, payload.quantity, payload.price, payload.flags);
                     break;
                 }
                 case oe::MSG_TYPE::DELETE_ORDER: {
+                    auto ladder = symbol_to_matching_engine[payload.symbol];
+                    if (!ladder) {
+                        throw std::runtime_error("Invalid symbol");
+                    }
                     ladder->delete_order(payload.exch_order_id);
                     break;
                 }
                 case oe::MSG_TYPE::MODIFY_ORDER: {
+                    auto ladder = symbol_to_matching_engine[payload.symbol];
+                    if (!ladder) {
+                        throw std::runtime_error("Invalid symbol");
+                    }
+                    aggressor_side = payload.side;
                     ladder->modify_order(payload.exch_order_id, payload.side, payload.quantity, payload.price);
                     break;
                 }
-                case oe::MSG_TYPE::REJECT:
-                case oe::MSG_TYPE::LOGIN_RESPONSE:
-                case oe::MSG_TYPE::ERROR: {
+                case oe::MSG_TYPE::REJECT: {
                     // these need to be sent back to the client
                     to_client.emplace(payload.msg_type, payload.exch_order_id, payload.symbol, client_seq, payload.side, payload.quantity, payload.price, payload.flags);
                     break;
                 }
+                case oe::MSG_TYPE::ERROR:
+                case oe::MSG_TYPE::LOGIN_RESPONSE:
                 case oe::MSG_TYPE::ACK:
                 case oe::MSG_TYPE::FILL:
                 case oe::MSG_TYPE::CLOSE:
