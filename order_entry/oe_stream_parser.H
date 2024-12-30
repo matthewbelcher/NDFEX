@@ -38,6 +38,27 @@ public:
         while (partial_message.size() >= sizeof(oe_request_header)) {
 
             oe_request_header* header = reinterpret_cast<oe_request_header*>(partial_message.data());
+            if (header->version != OE_PROTOCOL_VERSION) {
+                // unknown protocol version
+                // send an error message back to the client and close the socket
+                logger->warn("Unknown protocol version: {} from client sock {}", header->version, sock_fd);
+                logger->flush();
+
+                send_error_msg(sock_fd, header->seq_num, header->client_id, REJECT_REASON::INVALID_ORDER,
+                               "Unknown protocol version");
+                return;
+            }
+
+            if (header->length > MAX_OE_MESSAGE_SIZE) {
+                // message too large
+                // send an error message back to the client and close the socket
+                logger->warn("Message too large: {} from client sock {}", header->length, sock_fd);
+                logger->flush();
+
+                send_error_msg(sock_fd, header->seq_num, header->client_id, REJECT_REASON::INVALID_ORDER, "Message too large");
+                return;
+            }
+
             if (partial_message.size() < header->length) {
                 // not enough bytes to parse the full message
                 return;
@@ -70,18 +91,8 @@ public:
                     logger->warn("Unknown message type: {} from client sock {}", header->msg_type, sock_fd);
                     logger->flush();
 
-                    error_message err_msg;
-                    err_msg.header.length = sizeof(error_message);
-                    err_msg.header.msg_type = static_cast<uint8_t>(MSG_TYPE::ERROR);
-                    err_msg.header.seq_num = header->seq_num;
-                    err_msg.header.client_id = header->client_id;
-                    snprintf(reinterpret_cast<char*>(err_msg.error_message), sizeof(err_msg.error_message),
-                         "Unknown message type: %d", header->msg_type);
-                    err_msg.error_message_length = strlen(reinterpret_cast<char*>(err_msg.error_message));
-
-                    write(sock_fd, reinterpret_cast<const char*>(&err_msg), sizeof(err_msg)); // ignore return value because we are closing the socket anyway
-                    shutdown(sock_fd, SHUT_RDWR);
-                    close(sock_fd);
+                    send_error_msg(sock_fd, header->seq_num, header->client_id, REJECT_REASON::INVALID_ORDER,
+                                   "Unknown message type");
                     break;
                 }
             }
@@ -89,6 +100,21 @@ public:
             // remove the parsed message from the buffer
             partial_message.erase(partial_message.begin(), partial_message.begin() + header->length);
         }
+    }
+
+    void send_error_msg(int sock_fd, uint32_t seq_num, uint32_t client_id, REJECT_REASON reason_code, const char* error_msg) {
+        error_message err_msg;
+        err_msg.header.length = sizeof(error_message);
+        err_msg.header.msg_type = static_cast<uint8_t>(MSG_TYPE::ERROR);
+        err_msg.header.seq_num = seq_num;
+        err_msg.header.client_id = client_id;
+        err_msg.error_code = static_cast<uint8_t>(reason_code);
+        strncpy(reinterpret_cast<char*>(err_msg.error_message), error_msg, sizeof(err_msg.error_message));
+        err_msg.error_message_length = strlen(reinterpret_cast<char*>(err_msg.error_message));
+
+        write(sock_fd, reinterpret_cast<const char*>(&err_msg), sizeof(err_msg));
+        shutdown(sock_fd, SHUT_RDWR);
+        close(sock_fd);
     }
 
     void socket_closed(int sock_fd) {

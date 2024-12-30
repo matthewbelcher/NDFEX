@@ -157,4 +157,7 @@ struct error_message {
     uint8_t error_message[32];
 } __attribute__((packed));
 
+static constexpr ssize_t MAX_OE_MESSAGE_SIZE =
+    std::max(sizeof(login), std::max(sizeof(new_order), std::max(sizeof(delete_order), std::max(sizeof(modify_order), std::max(sizeof(order_ack), std::max(sizeof(order_reject), std::max(sizeof(order_fill), std::max(sizeof(order_closed), sizeof(error_message)))))))));
+
 } // namespace ndfex::oe
