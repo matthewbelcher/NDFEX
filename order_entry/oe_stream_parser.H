@@ -64,9 +64,12 @@ public:
                     handler.on_login(sock_fd, *msg);
                     break;
                 }
-                default:
+                default: {
                     // unknown message type
                     // send an error message back to the client and close the socket
+                    logger->warn("Unknown message type: {} from client sock {}", header->msg_type, sock_fd);
+                    logger->flush();
+
                     error_message err_msg;
                     err_msg.header.length = sizeof(error_message);
                     err_msg.header.msg_type = static_cast<uint8_t>(MSG_TYPE::ERROR);
@@ -80,6 +83,7 @@ public:
                     shutdown(sock_fd, SHUT_RDWR);
                     close(sock_fd);
                     break;
+                }
             }
 
             // remove the parsed message from the buffer

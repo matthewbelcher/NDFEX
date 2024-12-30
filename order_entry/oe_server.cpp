@@ -53,6 +53,8 @@ EpollServer<ClientHandler>::EpollServer(ClientHandler& handler, uint16_t port, s
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listen_fd, &ev) == -1) {
         throw std::runtime_error("Failed to add listen socket to epoll: " + std::string(strerror(errno)));
     }
+
+    logger->info("Listening on port {}", port);
 }
 
 template <typename ClientHandler>
@@ -81,6 +83,7 @@ void EpollServer<ClientHandler>::run() {
                 }
 
                 logger->info("Accepted new connection from {}:{}", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+                logger->flush();
 
                 // make the connection non-blocking
                 int flags = fcntl(conn_fd, F_GETFL, 0);
@@ -112,6 +115,7 @@ void EpollServer<ClientHandler>::run() {
                         }
                     } else if (len == 0) {
                         logger->info("Socket {} closed", events[i].data.fd);
+                        logger->flush();
                         close(events[i].data.fd);
                         parser.socket_closed(events[i].data.fd);
                         break;
