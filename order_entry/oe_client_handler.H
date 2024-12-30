@@ -64,6 +64,9 @@ class ClientHandler {
     private:
 
         template <typename Msg>
+        void write_msg_to_client(uint32_t client_id, uint32_t last_seq_num, Msg& msg);
+
+        template <typename Msg>
         ssize_t write_msg(int sock_fd, Msg& msg);
 
         void update_last_seq_num(int sock_fd, uint32_t seq_num);

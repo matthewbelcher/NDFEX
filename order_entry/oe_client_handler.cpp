@@ -14,14 +14,15 @@ ClientHandler::ClientHandler(
       logger(logger) {}
 
 void ClientHandler::on_login(int sock_fd, const login& msg) {
-    logger->info("Received login request from client {} {} {} {}", msg.header.client_id, users.begin()->second.username);
+    logger->info("Received login request from client {} {}", msg.header.client_id, users.begin()->second.username);
     // validate username and password
     auto it = users.find(std::string(reinterpret_cast<const char*>(msg.username)));
     if (it == users.end()
         || it->second.password != std::string(reinterpret_cast<const char*>(msg.password))
         || it->second.client_id != msg.header.client_id) {
 
-        logger->warn("Invalid login attempt from client {} {}", msg.header.client_id, std::string(reinterpret_cast<const char*>(msg.username)));
+        logger->warn("Invalid login attempt from client {} {}", msg.header.client_id,
+        std::string(reinterpret_cast<const char*>(msg.username)));
 
         // send login response with status = 1
         login_response response;
@@ -218,22 +219,7 @@ void ClientHandler::process() {
                 ack.quantity = payload.quantity;
                 ack.price = payload.price;
 
-                int sock_fd = get_sock_fd(client_id);
-                if (sock_fd == -1) {
-                    logger->warn("Client {} not found for ack", client_id);
-                    break;
-                }
-
-                update_last_seq_num(sock_fd, payload.client_seq);
-
-                ssize_t len = write_msg(sock_fd, ack);
-                if (len == -1) {
-                    log_network_send_error(sock_fd, len);
-
-                    // close the socket
-                    shutdown(sock_fd, SHUT_RDWR);
-                    close(sock_fd);
-                }
+                write_msg_to_client(client_id, payload.client_seq, ack);
                 break;
             }
             case MSG_TYPE::FILL: {
@@ -244,22 +230,7 @@ void ClientHandler::process() {
                 fill.price = payload.price;
                 fill.flags = payload.flags;
 
-                int sock_fd = get_sock_fd(client_id);
-                if (sock_fd == -1) {
-                    logger->warn("Client {} not found for fill", client_id);
-                    break;
-                }
-
-                update_last_seq_num(sock_fd, payload.client_seq);
-
-                ssize_t len = write_msg(sock_fd, fill);
-                if (len == -1) {
-                    log_network_send_error(sock_fd, len);
-
-                    // close the socket
-                    shutdown(sock_fd, SHUT_RDWR);
-                    close(sock_fd);
-                }
+                write_msg_to_client(client_id, payload.client_seq, fill);
 
                 // remove the order if it was fully filled
                 if (fill.flags & static_cast<uint8_t>(FILL_FLAGS::CLOSED)) {
@@ -273,22 +244,7 @@ void ClientHandler::process() {
                 closed.header.msg_type = static_cast<uint8_t>(MSG_TYPE::CLOSE);
                 closed.order_id = client_order_id;
 
-                int sock_fd = get_sock_fd(client_id);
-                if (sock_fd == -1) {
-                    logger->warn("Client {} not found for close", client_id);
-                    break;
-                }
-
-                update_last_seq_num(sock_fd, payload.client_seq);
-
-                ssize_t len = write_msg(sock_fd, closed);
-                if (len == -1) {
-                    log_network_send_error(sock_fd, len);
-
-                    // close the socket
-                    shutdown(sock_fd, SHUT_RDWR);
-                    close(sock_fd);
-                }
+                write_msg_to_client(client_id, payload.client_seq, closed);
 
                 // remove the order from the client's open orders
                 client_to_open_orders[client_id].erase(client_order_id);
@@ -302,21 +258,12 @@ void ClientHandler::process() {
                     break;
                 }
 
-                update_last_seq_num(sock_fd, payload.client_seq);
-
                 order_reject reject;
                 reject.header.msg_type = static_cast<uint8_t>(MSG_TYPE::REJECT);
                 reject.reject_reason = payload.flags; // flags is the reject reason
                 reject.order_id = payload.exch_order_id; // no exch order id is generated for rejects so pass this through
 
-                ssize_t len = write_msg(sock_fd, reject);
-                if (len == -1) {
-                    log_network_send_error(sock_fd, len);
-
-                    // close the socket
-                    shutdown(sock_fd, SHUT_RDWR);
-                    close(sock_fd);
-                }
+                write_msg_to_client(client_id, payload.client_seq, reject);
                 break;
             }
 
@@ -326,6 +273,27 @@ void ClientHandler::process() {
         }
         from_matching_engine.pop();
     }
+}
+
+template <typename Msg>
+void ClientHandler::write_msg_to_client(uint32_t client_id, uint32_t last_seq_num, Msg& msg) {
+    int sock_fd = get_sock_fd(client_id);
+    if (sock_fd == -1) {
+        logger->warn("Client {} not found for message", client_id);
+        return;
+    }
+
+    update_last_seq_num(sock_fd, last_seq_num);
+
+    ssize_t len = write_msg(sock_fd, msg);
+    if (len == -1) {
+        log_network_send_error(sock_fd, len);
+
+        // close the socket
+        shutdown(sock_fd, SHUT_RDWR);
+        close(sock_fd);
+    }
+    return;
 }
 
 template <typename Msg>
