@@ -43,10 +43,8 @@ int main(int argc, char** argv) {
     async_file->info("Hello from async logger");
     async_file->flush();
 
-
     // create market data publisher
     MarketDataPublisher publisher("239.1.3.37", 12345, "129.74.247.7", async_file);
-
 
     // create broker queues
     SPSCOEQueue to_client(1000);
