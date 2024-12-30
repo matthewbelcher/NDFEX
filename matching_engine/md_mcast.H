@@ -33,6 +33,8 @@ public:
 
     void publish_queued_trades(uint32_t symbol, md::SIDE aggressor_side);
 
+    void publish_hearbeat();
+
 private:
 
     template <typename Msg>

@@ -125,6 +125,23 @@ void MarketDataPublisher::publish_queued_trades(uint32_t symbol, md::SIDE aggres
     send();
 }
 
+void MarketDataPublisher::publish_hearbeat() {
+    // heartbeats are empty messages
+    if (buffer_size + sizeof(md::md_header) > sizeof(buffer)) {
+        send();
+    }
+
+    md::md_header* header = reinterpret_cast<md::md_header*>(&buffer[buffer_size]);
+    header->length = sizeof(md::md_header);
+    header->magic_number = md::MAGIC_NUMBER;
+    header->seq_num = seq_num++;
+    header->timestamp = nanotime();
+    header->msg_type = md::MSG_TYPE::HEARTBEAT;
+
+    buffer_size += sizeof(md::md_header);
+    send();
+}
+
 void MarketDataPublisher::send() {
     if (buffer_size == 0) {
         // nothing to send

@@ -9,6 +9,7 @@ static std::string go_irish = "GOIRISH!"; // 8 bytes
 static const uint64_t MAGIC_NUMBER = *reinterpret_cast<const uint64_t*>(go_irish.c_str());
 
 enum class MSG_TYPE: uint8_t {
+    HEARTBEAT = 0,
     NEW_ORDER = 1,
     DELETE_ORDER = 2,
     MODIFY_ORDER = 3,
