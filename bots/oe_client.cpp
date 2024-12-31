@@ -28,6 +28,7 @@ bool OEClient::login() {
 
     oe::login login_msg;
     login_msg.header.length = sizeof(oe::login);
+    login_msg.header.version = oe::OE_PROTOCOL_VERSION;
     login_msg.header.msg_type = static_cast<uint8_t>(oe::MSG_TYPE::LOGIN);
     login_msg.header.seq_num = client_seq++;
     login_msg.header.client_id = user.client_id;
@@ -64,6 +65,7 @@ void OEClient::send_order(uint32_t symbol, uint64_t order_id, md::SIDE side, uin
     order.header.seq_num = client_seq++;
     order.header.client_id = user.client_id;
     order.header.session_id = session_id;
+    order.header.version = oe::OE_PROTOCOL_VERSION;
     order.symbol = symbol;
     order.side = side;
     order.quantity = quantity;
@@ -83,6 +85,7 @@ void OEClient::cancel_order(uint64_t order_id) {
     order.header.msg_type = static_cast<uint8_t>(oe::MSG_TYPE::DELETE_ORDER);
     order.header.seq_num = client_seq++;
     order.header.client_id = user.client_id;
+    order.header.version = oe::OE_PROTOCOL_VERSION;
     order.header.session_id = session_id;
     order.order_id = order_id;
 
