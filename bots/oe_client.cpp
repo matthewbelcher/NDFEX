@@ -66,7 +66,9 @@ void OEClient::send_order(uint32_t symbol, uint64_t order_id, md::SIDE side, uin
     order.header.client_id = user.client_id;
     order.header.session_id = session_id;
     order.header.version = oe::OE_PROTOCOL_VERSION;
+
     order.symbol = symbol;
+    order.order_id = order_id;
     order.side = side;
     order.quantity = quantity;
     order.price = price;

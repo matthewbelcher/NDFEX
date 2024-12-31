@@ -123,7 +123,9 @@ void ClientHandler::on_login(int sock_fd, const login& msg) {
 }
 
 void ClientHandler::on_new_order(int sock_fd, const new_order& msg) {
-    logger->info("Received new order from client {}", msg.header.client_id);
+    logger->info("Received new order from client {}: order id: {} symbol: {} side: {} quantity: {} price: {} flags: {}",
+                 msg.header.client_id, msg.order_id, msg.symbol, static_cast<uint8_t>(msg.side), msg.quantity, msg.price, msg.flags);
+
     if (!validate_session(sock_fd, msg.header.session_id, msg.header.client_id)) {
         logger->warn("Invalid session for new order from client {}", msg.header.client_id);
         send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SESSION_ID), msg.order_id);
@@ -139,7 +141,8 @@ void ClientHandler::on_new_order(int sock_fd, const new_order& msg) {
     auto& client_order_id_map = client_to_open_orders[msg.header.client_id];
     if (client_order_id_map.find(msg.order_id) != client_order_id_map.end()) {
         logger->warn("Duplicate order id for new order from client {}", msg.header.client_id);
-        send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(REJECT_REASON::DUPLICATE_ORDER_ID), msg.order_id);
+        send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(REJECT_REASON::DUPLICATE_ORDER_ID),
+                          msg.order_id);
         return;
     }
 
@@ -219,6 +222,9 @@ void ClientHandler::process() {
                 ack.quantity = payload.quantity;
                 ack.price = payload.price;
 
+                logger->info("Sending ack to client {} seq {} order id {} exch order id {} quantity {} price {}",
+                             client_id, payload.client_seq, client_order_id, payload.exch_order_id, payload.quantity, payload.price);
+
                 write_msg_to_client(client_id, payload.client_seq, ack);
                 break;
             }
@@ -229,6 +235,9 @@ void ClientHandler::process() {
                 fill.quantity = payload.quantity;
                 fill.price = payload.price;
                 fill.flags = payload.flags;
+
+                logger->info("Sending fill to client {} seq {} order id {} quantity {} price {} flags {}",
+                             client_id, payload.client_seq, client_order_id, payload.quantity, payload.price, payload.flags);
 
                 write_msg_to_client(client_id, payload.client_seq, fill);
 
@@ -243,6 +252,8 @@ void ClientHandler::process() {
                 order_closed closed;
                 closed.header.msg_type = static_cast<uint8_t>(MSG_TYPE::CLOSE);
                 closed.order_id = client_order_id;
+
+                logger->info("Sending close to client {} seq {} order id {}", client_id, payload.client_seq, client_order_id);
 
                 write_msg_to_client(client_id, payload.client_seq, closed);
 
@@ -262,6 +273,9 @@ void ClientHandler::process() {
                 reject.header.msg_type = static_cast<uint8_t>(MSG_TYPE::REJECT);
                 reject.reject_reason = payload.flags; // flags is the reject reason
                 reject.order_id = payload.exch_order_id; // no exch order id is generated for rejects so pass this through
+
+                logger->info("Sending reject to client {} seq {} order id {} reason {}", client_id, payload.client_seq,
+                             client_order_id, payload.flags);
 
                 write_msg_to_client(client_id, payload.client_seq, reject);
                 break;
