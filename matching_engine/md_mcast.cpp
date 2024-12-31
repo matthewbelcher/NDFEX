@@ -59,6 +59,7 @@ MarketDataPublisher::MarketDataPublisher(
 void MarketDataPublisher::publish_new_order(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {
     md::new_order msg;
     msg.header.length = sizeof(md::new_order);
+    msg.header.msg_type = md::MSG_TYPE::NEW_ORDER;
     msg.order_id = order_id;
     msg.symbol = symbol;
     msg.side = side;
@@ -73,6 +74,7 @@ void MarketDataPublisher::publish_new_order(uint64_t order_id, uint32_t symbol, 
 void MarketDataPublisher::publish_delete_order(uint64_t order_id) {
     md::delete_order msg;
     msg.header.length = sizeof(md::delete_order);
+    msg.header.msg_type = md::MSG_TYPE::DELETE_ORDER;
     msg.order_id = order_id;
 
     write_msg(msg);
@@ -82,6 +84,7 @@ void MarketDataPublisher::publish_delete_order(uint64_t order_id) {
 void MarketDataPublisher::publish_modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price) {
     md::modify_order msg;
     msg.header.length = sizeof(md::modify_order);
+    msg.header.msg_type = md::MSG_TYPE::MODIFY_ORDER;
     msg.order_id = order_id;
     msg.side = side;
     msg.quantity = quantity;
@@ -94,6 +97,7 @@ void MarketDataPublisher::publish_modify_order(uint64_t order_id, md::SIDE side,
 void MarketDataPublisher::queue_trade(uint64_t order_id, uint32_t quantity, uint32_t price) {
     md::trade msg;
     msg.header.length = sizeof(md::trade);
+    msg.header.msg_type = md::MSG_TYPE::TRADE;
     msg.order_id = order_id;
     msg.quantity = quantity;
     msg.price = price;
@@ -102,6 +106,10 @@ void MarketDataPublisher::queue_trade(uint64_t order_id, uint32_t quantity, uint
 }
 
 void MarketDataPublisher::publish_queued_trades(uint32_t symbol, md::SIDE aggressor_side) {
+    if (queued_trades.empty()) {
+        return;
+    }
+
     // get total quantity and last price
     uint32_t total_quantity = 0;
     uint32_t last_price = 0;
@@ -112,6 +120,7 @@ void MarketDataPublisher::publish_queued_trades(uint32_t symbol, md::SIDE aggres
 
     md::trade_summary msg;
     msg.header.length = sizeof(md::trade_summary);
+    msg.header.msg_type = md::MSG_TYPE::TRADE_SUMMARY;
     msg.symbol = symbol;
     msg.aggressor_side = aggressor_side;
     msg.total_quantity = total_quantity;
@@ -122,6 +131,7 @@ void MarketDataPublisher::publish_queued_trades(uint32_t symbol, md::SIDE aggres
     for (const auto& trade : queued_trades) {
         write_msg(trade);
     }
+    queued_trades.clear();
     send();
 }
 

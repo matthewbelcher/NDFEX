@@ -98,7 +98,7 @@ void EpollServer<ClientHandler>::run() {
                 }
 
                 struct epoll_event ev;
-                ev.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
+                ev.events = EPOLLIN | EPOLLET | EPOLLRDHUP | EPOLLHUP;
                 ev.data.fd = conn_fd;
 
                 if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, conn_fd, &ev) == -1) {
@@ -107,8 +107,8 @@ void EpollServer<ClientHandler>::run() {
             } else {
 
                 // if event was EPOLLRDHUP, the socket was closed
-                if (events[i].events & EPOLLRDHUP) {
-                    logger->info("Socket {} closed", events[i].data.fd);
+                if (events[i].events & EPOLLRDHUP || events[i].events & EPOLLHUP) {
+                    logger->info("Socket {} closed on hup", events[i].data.fd);
                     logger->flush();
                     close(events[i].data.fd);
                     parser.socket_closed(events[i].data.fd);
@@ -124,7 +124,9 @@ void EpollServer<ClientHandler>::run() {
                                 break;
                             } else {
                                 logger->error("Failed to read from socket: {}", strerror(errno));
+                                parser.socket_closed(events[i].data.fd);
                                 close(events[i].data.fd);
+                                break;
                             }
                         } else if (len == 0) {
                             logger->info("Socket {} closed", events[i].data.fd);

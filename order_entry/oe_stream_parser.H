@@ -119,7 +119,7 @@ public:
     }
 
     void socket_closed(int sock_fd) {
-        logger->info("Socket {} closed", sock_fd);
+        logger->info("parser Socket {} closed", sock_fd);
         logger->flush();
 
         sock_to_partial_messages.erase(sock_fd);

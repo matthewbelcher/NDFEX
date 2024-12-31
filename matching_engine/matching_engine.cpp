@@ -87,7 +87,10 @@ int main(int argc, char** argv) {
     std::thread t([&broker, async_file, &running]() {
         set_cpu_affinity(2); // Set affinity to target core
         try {
-            while (running) broker.process();
+            while (running) {
+                broker.process();
+                async_file->flush();
+            }
         } catch (const std::exception& e) {
             async_file->error("Exception in publisher thread: {}", e.what());
             std::cout << "Exception in publisher thread: " << e.what() << std::endl;

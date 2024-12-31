@@ -65,7 +65,7 @@ private:
 
     std::uint32_t seq_num{0};
 
-    std::vector<md::trade> queued_trades{128}; // trade messages are queued up to be sent in a single packet
+    std::vector<md::trade> queued_trades; // trade messages are queued up to be sent in a single packet
 };
 
 }  // namespace ndfex

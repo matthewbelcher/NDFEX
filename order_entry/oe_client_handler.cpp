@@ -124,6 +124,11 @@ void ClientHandler::on_login(int sock_fd, const login& msg) {
 
 void ClientHandler::on_socket_closed(int sock_fd) {
     // clear client session info
+    logger->info("ClientHandler: socket {} closed", sock_fd);
+    logger->flush();
+
+    cancel_all_client_orders(sock_to_session_info[sock_fd].client_id);
+
     auto it = sock_to_session_info.find(sock_fd);
     if (it != sock_to_session_info.end()) {
         client_to_sock_fd.erase(it->second.client_id);
@@ -369,6 +374,7 @@ void ClientHandler::send_order_reject(int sock_fd, uint32_t seq_num, uint32_t cl
 }
 
 void ClientHandler::cancel_all_client_orders(uint32_t client_id) {
+    logger->info("Cancelling all orders for client {}", client_id);
     auto it = client_to_open_orders.find(client_id);
     if (it == client_to_open_orders.end()) {
         return;
