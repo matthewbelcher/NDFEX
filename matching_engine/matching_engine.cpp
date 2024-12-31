@@ -83,12 +83,14 @@ int main(int argc, char** argv) {
 
     oe::EpollServer<oe::ClientHandler> oe_server(client_handler, 1234, async_file);
 
-    std::thread t([&broker, async_file] {
+    std::atomic<bool> running = true;
+    std::thread t([&broker, async_file, &running]() {
         set_cpu_affinity(2); // Set affinity to target core
         try {
-            while (true) broker.process();
+            while (running) broker.process();
         } catch (const std::exception& e) {
             async_file->error("Exception in publisher thread: {}", e.what());
+            std::cout << "Exception in publisher thread: " << e.what() << std::endl;
         }
     });
 
@@ -97,12 +99,14 @@ int main(int argc, char** argv) {
     } catch (const std::exception& e) {
         async_file->error("Exception in main thread: {}", e.what());
         std::cout << "Exception in main thread: " << e.what() << std::endl;
+        running = false;
         t.join();
         async_file->flush();
         spdlog::shutdown();
         return 1;
     }
 
+    running = false;
     t.join();
     async_file->flush();
     spdlog::shutdown();
