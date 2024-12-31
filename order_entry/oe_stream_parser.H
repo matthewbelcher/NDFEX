@@ -124,6 +124,10 @@ public:
         sock_to_partial_messages.erase(sock_fd);
     }
 
+    void new_socket(int sock_fd) {
+        sock_to_partial_messages[sock_fd] = {};
+    }
+
 private:
 
     Handler& handler;

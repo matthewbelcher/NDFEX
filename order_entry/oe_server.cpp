@@ -85,6 +85,8 @@ void EpollServer<ClientHandler>::run() {
                 logger->info("Accepted new connection from {}:{}", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
                 logger->flush();
 
+                parser.new_socket(conn_fd);
+
                 // make the connection non-blocking
                 int flags = fcntl(conn_fd, F_GETFL, 0);
                 if (flags == -1) {
