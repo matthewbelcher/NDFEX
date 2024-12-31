@@ -314,6 +314,7 @@ template <typename Msg>
 ssize_t ClientHandler::write_msg(int sock_fd, Msg& msg) {
     // fill in the header fields
     auto session_info = sock_to_session_info[sock_fd];
+
     msg.header.length = sizeof(Msg);
     msg.header.version = OE_PROTOCOL_VERSION;
     msg.header.seq_num = session_info.exch_seq_num++;

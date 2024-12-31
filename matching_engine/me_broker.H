@@ -129,6 +129,7 @@ public:
             }
             finishedPacket(payload.symbol);
         }
+        from_client.pop();
     }
 
 private:
