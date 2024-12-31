@@ -26,6 +26,18 @@ bool OEClient::login() {
         return false;
     }
 
+    // set socket to non-blocking
+    int flags = fcntl(sock_fd, F_GETFL, 0);
+    if (flags == -1) {
+        logger->error("Failed to get socket flags: {}", strerror(errno));
+        return false;
+    }
+
+    if (fcntl(sock_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        logger->error("Failed to set socket to non-blocking: {}", strerror(errno));
+        return false;
+    }
+
     oe::login login_msg;
     login_msg.header.length = sizeof(oe::login);
     login_msg.header.version = oe::OE_PROTOCOL_VERSION;
@@ -44,9 +56,15 @@ bool OEClient::login() {
     // read login response
     oe::login_response response;
     len = read(sock_fd, &response, sizeof(response));
-    if (len == -1) {
-        logger->error("Failed to read login response: {}", strerror(errno));
-        return false;
+    while (len == -1) {
+        // wait for login response
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            len = read(sock_fd, &response, sizeof(response));
+            continue;
+        } else {
+            logger->error("Failed to read login response: {}", strerror(errno));
+            return false;
+        }
     }
 
     if (response.status != static_cast<uint8_t>(oe::LOGIN_STATUS::SUCCESS)) {
@@ -95,73 +113,77 @@ void OEClient::cancel_order(uint64_t order_id) {
     if (len == -1) {
         logger->error("Failed to send cancel order: {}", strerror(errno));
     }
-
 }
 
 void OEClient::process() {
 
     // read messages from the server
     char buf[1500];
-    ssize_t len = read(sock_fd, buf, sizeof(oe::oe_response_header));
+    ssize_t len = read(sock_fd, buf, sizeof(buf));
     if (len == -1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return;
+        }
         logger->error("Failed to read message header: {}", strerror(errno));
         return;
     }
 
-    oe::oe_response_header header = *reinterpret_cast<oe::oe_response_header*>(buf);
+    buffer.insert(buffer.end(), buf, buf + len);
+    if (buffer.size() < sizeof(oe::oe_response_header)) {
+        return;
+    }
+
+    oe::oe_response_header header = *reinterpret_cast<oe::oe_response_header*>(buffer.data());
 
     switch (header.msg_type) {
         case static_cast<uint8_t>(oe::MSG_TYPE::ACK): {
-            len = read(sock_fd, buf + sizeof(oe::oe_response_header), sizeof(oe::order_ack) - sizeof(oe::oe_response_header));
-            if (len == -1) {
-                logger->error("Failed to read ack message: {}", strerror(errno));
+            if (buffer.size() < sizeof(oe::order_ack)) {
                 return;
             }
 
-            oe::order_ack ack = *reinterpret_cast<oe::order_ack*>(buf);
+            oe::order_ack ack = *reinterpret_cast<oe::order_ack*>(buffer.data());
             logger->info("Received ack for order id: {} {}", ack.order_id, ack.exch_order_id);
             break;
         }
         case static_cast<uint8_t>(oe::MSG_TYPE::REJECT): {
-            len = read(sock_fd, buf + sizeof(oe::oe_response_header), sizeof(oe::order_reject) - sizeof(oe::oe_response_header));
-            if (len == -1) {
-                logger->error("Failed to read reject message: {}", strerror(errno));
+            if (buffer.size() < sizeof(oe::order_reject)) {
                 return;
             }
-            oe::order_reject reject = *reinterpret_cast<oe::order_reject*>(buf);
+            oe::order_reject reject = *reinterpret_cast<oe::order_reject*>(buffer.data());
 
             logger->warn("Received reject for order id: {} reason: {}", reject.order_id, static_cast<int>(reject.reject_reason));
             break;
         }
         case static_cast<uint8_t>(oe::MSG_TYPE::CLOSE): {
-            len = read(sock_fd, buf + sizeof(oe::oe_response_header), sizeof(oe::order_closed) - sizeof(oe::oe_response_header));
-            oe::order_closed closed = *reinterpret_cast<oe::order_closed*>(buf);
+            if (buffer.size() < sizeof(oe::order_closed)) {
+                return;
+            }
+            oe::order_closed closed = *reinterpret_cast<oe::order_closed*>(buffer.data());
             logger->info("Received close message for order id: {}", closed.order_id);
             break;
         }
         case static_cast<uint8_t>(oe::MSG_TYPE::FILL): {
-            len = read(sock_fd, buf + sizeof(oe::oe_response_header), sizeof(oe::order_fill) - sizeof(oe::oe_response_header));
-            if (len == -1) {
-                logger->error("Failed to read fill message: {}", strerror(errno));
+            if (buffer.size() < sizeof(oe::order_fill)) {
                 return;
             }
-            oe::order_fill fill = *reinterpret_cast<oe::order_fill*>(buf);
+            oe::order_fill fill = *reinterpret_cast<oe::order_fill*>(buffer.data());
             logger->info("Received fill for order id: {} quantity: {} price: {}", fill.order_id, fill.quantity, fill.price);
             break;
         }
         case static_cast<uint8_t>(oe::MSG_TYPE::ERROR): {
-            len = read(sock_fd, buf + sizeof(oe::oe_response_header), sizeof(oe::error_message) - sizeof(oe::oe_response_header));
-            if (len == -1) {
-                logger->error("Failed to read error message: {}", strerror(errno));
+            if (buffer.size() < sizeof(oe::error_message)) {
                 return;
             }
-            oe::error_message err = *reinterpret_cast<oe::error_message*>(buf);
+            oe::error_message err = *reinterpret_cast<oe::error_message*>(buffer.data());
             logger->error("Received error message: {}", reinterpret_cast<char*>(err.error_message));
+            throw std::runtime_error("Received error message " + std::string(reinterpret_cast<char*>(err.error_message)));
             break;
         }
         default:
             logger->warn("Unknown message type: {}", header.msg_type);
+            throw std::runtime_error("Unknown message type " + std::to_string(header.msg_type));
             break;
     }
+    buffer.erase(buffer.begin(), buffer.begin() + header.length);
 }
 } // namespace ndfex::bots

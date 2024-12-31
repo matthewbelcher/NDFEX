@@ -27,6 +27,7 @@ public:
 private:
 
     int sock_fd;
+    std::vector<char> buffer;
     uint32_t client_seq{0};
     uint64_t session_id{0};
 
