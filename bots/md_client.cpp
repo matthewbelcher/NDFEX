@@ -86,7 +86,7 @@ void MDClient::wait_for_hearbeat() {
 }
 
 void MDClient::process() {
-    ssize_t len = recv(mcast_fd, buf, sizeof(buf), 0);
+    ssize_t len = recvfrom(mcast_fd, buf, sizeof(buf), 0, nullptr, nullptr);
     if (len < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             return;
@@ -94,7 +94,6 @@ void MDClient::process() {
         logger->error("Failed to receive message: {}", strerror(errno));
         throw std::runtime_error("Failed to receive message");
     }
-
     process_message(buf, len);
 }
 
@@ -123,6 +122,7 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
                     symbol_to_order_book[new_order->symbol] = new OrderBook(logger);
                 }
                 symbol_to_order_book[new_order->symbol]->new_order(new_order->order_id, new_order->side, new_order->quantity, new_order->price, new_order->flags);
+                order_to_symbol[new_order->order_id] = new_order->symbol;
                 break;
             }
             case md::MSG_TYPE::DELETE_ORDER: {
