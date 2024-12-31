@@ -101,58 +101,61 @@ void OEClient::cancel_order(uint64_t order_id) {
 void OEClient::process() {
 
     // read messages from the server
-    oe::oe_response_header header;
-    ssize_t len = read(sock_fd, &header, sizeof(header));
+    char buf[1500];
+    ssize_t len = read(sock_fd, buf, sizeof(oe::oe_response_header));
     if (len == -1) {
         logger->error("Failed to read message header: {}", strerror(errno));
         return;
     }
 
+    oe::oe_response_header header = *reinterpret_cast<oe::oe_response_header*>(buf);
+
     switch (header.msg_type) {
         case static_cast<uint8_t>(oe::MSG_TYPE::ACK): {
-            oe::order_ack ack;
-            len = read(sock_fd, &ack, sizeof(ack));
+            len = read(sock_fd, buf + sizeof(oe::oe_response_header), sizeof(oe::order_ack) - sizeof(oe::oe_response_header));
             if (len == -1) {
                 logger->error("Failed to read ack message: {}", strerror(errno));
                 return;
             }
 
+            oe::order_ack ack = *reinterpret_cast<oe::order_ack*>(buf);
             logger->info("Received ack for order id: {} {}", ack.order_id, ack.exch_order_id);
             break;
         }
         case static_cast<uint8_t>(oe::MSG_TYPE::REJECT): {
-            oe::order_reject reject;
-            len = read(sock_fd, &reject, sizeof(reject));
+            len = read(sock_fd, buf + sizeof(oe::oe_response_header), sizeof(oe::order_reject) - sizeof(oe::oe_response_header));
             if (len == -1) {
                 logger->error("Failed to read reject message: {}", strerror(errno));
                 return;
             }
+            oe::order_reject reject = *reinterpret_cast<oe::order_reject*>(buf);
+
             logger->warn("Received reject for order id: {} reason: {}", reject.order_id, static_cast<int>(reject.reject_reason));
             break;
         }
         case static_cast<uint8_t>(oe::MSG_TYPE::CLOSE): {
-            oe::order_closed closed;
-            len = read(sock_fd, &closed, sizeof(closed));
+            len = read(sock_fd, buf + sizeof(oe::oe_response_header), sizeof(oe::order_closed) - sizeof(oe::oe_response_header));
+            oe::order_closed closed = *reinterpret_cast<oe::order_closed*>(buf);
             logger->info("Received close message for order id: {}", closed.order_id);
             break;
         }
         case static_cast<uint8_t>(oe::MSG_TYPE::FILL): {
-            oe::order_fill fill;
-            len = read(sock_fd, &fill, sizeof(fill));
+            len = read(sock_fd, buf + sizeof(oe::oe_response_header), sizeof(oe::order_fill) - sizeof(oe::oe_response_header));
             if (len == -1) {
                 logger->error("Failed to read fill message: {}", strerror(errno));
                 return;
             }
+            oe::order_fill fill = *reinterpret_cast<oe::order_fill*>(buf);
             logger->info("Received fill for order id: {} quantity: {} price: {}", fill.order_id, fill.quantity, fill.price);
             break;
         }
         case static_cast<uint8_t>(oe::MSG_TYPE::ERROR): {
-            oe::error_message err;
-            len = read(sock_fd, &err, sizeof(err));
+            len = read(sock_fd, buf + sizeof(oe::oe_response_header), sizeof(oe::error_message) - sizeof(oe::oe_response_header));
             if (len == -1) {
                 logger->error("Failed to read error message: {}", strerror(errno));
                 return;
             }
+            oe::error_message err = *reinterpret_cast<oe::error_message*>(buf);
             logger->error("Received error message: {}", reinterpret_cast<char*>(err.error_message));
             break;
         }

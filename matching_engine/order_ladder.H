@@ -23,7 +23,7 @@ namespace ndfex {
             uint64_t timestamp;
             uint32_t quantity;
             uint32_t filled_quantity;
-            uint32_t price;
+            int32_t price;
             md::SIDE side;
             uint8_t flags;
 
@@ -43,8 +43,8 @@ namespace ndfex {
         static const std::size_t INITIAL_ORDER_CAPACITY = 1e7;
 
         std::unordered_map<uint64_t, Order> orders{INITIAL_ORDER_CAPACITY};
-        std::map<uint32_t, PriceLevel, std::greater<uint32_t>> buy_levels;
-        std::map<uint32_t, PriceLevel, std::less<uint32_t>> sell_levels;
+        std::map<int32_t, PriceLevel, std::greater<int32_t>> buy_levels;
+        std::map<int32_t, PriceLevel, std::less<int32_t>> sell_levels;
 
         Subscriber* const subscriber;
         const uint32_t symbol;
@@ -55,21 +55,21 @@ namespace ndfex {
         ~OrderLadder() = default;
 
         template <bool notify = true>
-        void new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags, uint32_t filled_quantity = 0);
+        void new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, uint32_t filled_quantity = 0);
 
         template <bool notify = true>
         void delete_order(uint64_t order_id);
 
-        void modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price);
+        void modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price);
 
     private:
 
         template <typename PriceLevels>
-        void match(uint64_t order_id, md::SIDE side, uint32_t& quantity, uint32_t price,
+        void match(uint64_t order_id, md::SIDE side, uint32_t& quantity, int32_t price,
                    PriceLevels& opposite_side_price_levels);
 
         template <typename PriceLevels>
-        void handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags, PriceLevels& price_levels,
+        void handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, PriceLevels& price_levels,
                               bool notify, uint32_t filled_quantity);
 
         template <typename PriceLevels>
@@ -78,7 +78,7 @@ namespace ndfex {
 
     template <typename Subscriber>
     template <bool notify>
-    void OrderLadder<Subscriber>::new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags,
+    void OrderLadder<Subscriber>::new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags,
                                             uint32_t filled_quantity) {
         if (side == md::SIDE::BUY) {
             handle_new_order(order_id, side, quantity, price, flags, buy_levels, notify, filled_quantity);
@@ -89,7 +89,7 @@ namespace ndfex {
 
     template <typename Subscriber>
     template <typename PriceLevels>
-    void OrderLadder<Subscriber>::handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags,
+    void OrderLadder<Subscriber>::handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags,
                                                    PriceLevels& price_levels, bool notify, uint32_t filled_quantity) {
         if (quantity > filled_quantity) {
             quantity = quantity - filled_quantity;
@@ -196,7 +196,7 @@ namespace ndfex {
             return;
         }
 
-        uint32_t price = it->second.price;
+        int32_t price = it->second.price;
         if (it->second.side == md::SIDE::BUY) {
             handle_delete_order(order_id, buy_levels);
             if (buy_levels.find(price) != buy_levels.end() && buy_levels[price].head == nullptr) {
@@ -215,7 +215,7 @@ namespace ndfex {
     }
 
     template <typename Subscriber>
-    void OrderLadder<Subscriber>::modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity, uint32_t price) {
+    void OrderLadder<Subscriber>::modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price) {
         auto it = orders.find(order_id);
         if (it == orders.end()) {
             // order does not exist
@@ -242,7 +242,7 @@ namespace ndfex {
 
     template <typename Subscriber>
     template <typename PriceLevels>
-    void OrderLadder<Subscriber>::match(uint64_t incoming_order_id, md::SIDE side, uint32_t& quantity, uint32_t price,
+    void OrderLadder<Subscriber>::match(uint64_t incoming_order_id, md::SIDE side, uint32_t& quantity, int32_t price,
                                         PriceLevels& opposite_side_price_levels) {
         // check if there are any orders on the opposite side at the same or better price level
         auto it = opposite_side_price_levels.begin();

@@ -159,6 +159,7 @@ void ClientHandler::on_new_order(int sock_fd, const new_order& msg) {
     client_order_id_map[msg.order_id] = {exch_order_id, msg.symbol};
     exch_to_client_orders[exch_order_id] = {msg.header.client_id, msg.order_id};
 
+    logger->info("Client order id {} mapped to exch order id {}", msg.order_id, exch_order_id);
     to_matching_engine.emplace(MSG_TYPE::NEW_ORDER, exch_order_id, msg.symbol, msg.header.seq_num, msg.side, msg.quantity, msg.price, msg.flags);
 }
 

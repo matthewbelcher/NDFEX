@@ -35,7 +35,9 @@ int main(int argc, char* argv[]) {
     client1.cancel_order(1);
 
     // process messages from the server
-    client1.process();
+    while (true) {
+        client1.process();
+    }
 
 
     return 0;
