@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
     spdlog::init_thread_pool(8192, 1, on_thread_start);
     auto async_file = spdlog::daily_logger_mt<spdlog::async_factory>("async_logger", "logs/ME");
 
-    async_file->info("Hello from async logger");
+    async_file->info("Starting matching engine");
     async_file->flush();
 
     // create market data publisher
@@ -83,7 +83,6 @@ int main(int argc, char** argv) {
 
     oe::EpollServer<oe::ClientHandler> oe_server(client_handler, 1234, async_file);
 
-
     std::thread t([&broker, async_file] {
         set_cpu_affinity(2); // Set affinity to target core
         try {
@@ -97,6 +96,7 @@ int main(int argc, char** argv) {
         oe_server.run();
     } catch (const std::exception& e) {
         async_file->error("Exception in main thread: {}", e.what());
+        std::cout << "Exception in main thread: " << e.what() << std::endl;
         t.join();
         async_file->flush();
         spdlog::shutdown();

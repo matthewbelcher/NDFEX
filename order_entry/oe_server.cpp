@@ -66,7 +66,7 @@ EpollServer<ClientHandler>::~EpollServer() {
 template <typename ClientHandler>
 void EpollServer<ClientHandler>::run() {
     while (true) {
-        int nfds = epoll_wait(epoll_fd, events, 16, -1);
+        int nfds = epoll_wait(epoll_fd, events, 16, 0);
         if (nfds == -1) {
             logger->error("Failed to wait on epoll: {}", strerror(errno));
             throw std::runtime_error("Failed to wait on epoll: " + std::string(strerror(errno)));
@@ -105,24 +105,42 @@ void EpollServer<ClientHandler>::run() {
                     throw std::runtime_error("Failed to add connection to epoll: " + std::string(strerror(errno)));
                 }
             } else {
-                // read from the socket until EWAIT is returned
-                while (true) {
-                    ssize_t len = read(events[i].data.fd, buf, sizeof(buf));
-                    if (len < 0) {
-                        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+
+                // if event was EPOLLRDHUP, the socket was closed
+                if (events[i].events & EPOLLRDHUP) {
+                    logger->info("Socket {} closed", events[i].data.fd);
+                    logger->flush();
+                    close(events[i].data.fd);
+                    parser.socket_closed(events[i].data.fd);
+                    break;
+
+                } else {
+
+                    while (true) {
+                        // must read until EAGAIN
+                        ssize_t len = read(events[i].data.fd, buf, sizeof(buf));
+                        if (len < 0) {
+                            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                                break;
+                            } else {
+                                logger->error("Failed to read from socket: {}", strerror(errno));
+                                throw std::runtime_error("Failed to read from socket: " + std::string(strerror(errno)));
+                            }
+                        } else if (len == 0) {
+                            logger->info("Socket {} closed", events[i].data.fd);
+                            logger->flush();
+                            close(events[i].data.fd);
+                            parser.socket_closed(events[i].data.fd);
                             break;
                         } else {
-                            logger->error("Failed to read from socket: {}", strerror(errno));
-                            throw std::runtime_error("Failed to read from socket: " + std::string(strerror(errno)));
+                            bool socket_open = parser.parse(events[i].data.fd, buf, len);
+                            if (!socket_open) {
+                                // the parser closed the socket and sent an error message
+                                close(events[i].data.fd);
+                                parser.socket_closed(events[i].data.fd);
+                                break;
+                            }
                         }
-                    } else if (len == 0) {
-                        logger->info("Socket {} closed", events[i].data.fd);
-                        logger->flush();
-                        close(events[i].data.fd);
-                        parser.socket_closed(events[i].data.fd);
-                        break;
-                    } else {
-                        parser.parse(events[i].data.fd, buf, len);
                     }
                 }
             }
