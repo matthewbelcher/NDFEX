@@ -122,6 +122,15 @@ void ClientHandler::on_login(int sock_fd, const login& msg) {
     }
 }
 
+void ClientHandler::on_socket_closed(int sock_fd) {
+    // clear client session info
+    auto it = sock_to_session_info.find(sock_fd);
+    if (it != sock_to_session_info.end()) {
+        client_to_sock_fd.erase(it->second.client_id);
+        sock_to_session_info.erase(it);
+    }
+}
+
 void ClientHandler::on_new_order(int sock_fd, const new_order& msg) {
     logger->info("Received new order from client {}: order id: {} symbol: {} side: {} quantity: {} price: {} flags: {}",
                  msg.header.client_id, msg.order_id, msg.symbol, static_cast<uint8_t>(msg.side), msg.quantity, msg.price, msg.flags);

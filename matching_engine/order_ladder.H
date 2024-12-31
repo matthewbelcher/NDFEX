@@ -164,8 +164,8 @@ namespace ndfex {
     void OrderLadder<Subscriber>::handle_delete_order(uint64_t order_id, PriceLevels& price_levels) {
         auto it = orders.find(order_id);
         if (it == orders.end()) {
-            // order does not exist
-            throw OrderNotFoundException("Order " + std::to_string(order_id) + " does not exist");
+            subscriber->onCancelReject(order_id);
+            return;
         }
 
         PriceLevel& price_level = price_levels[it->second.price];
@@ -192,8 +192,8 @@ namespace ndfex {
     void OrderLadder<Subscriber>::delete_order(uint64_t order_id) {
         auto it = orders.find(order_id);
         if (it == orders.end()) {
-            // order does not exist
-            throw OrderNotFoundException("Order " + std::to_string(order_id) + " does not exist");
+            subscriber->onCancelReject(order_id);
+            return;
         }
 
         uint32_t price = it->second.price;

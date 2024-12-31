@@ -29,7 +29,7 @@ public:
     StreamParser(Handler& handler, std::shared_ptr<spdlog::logger> logger) : handler(handler), logger(logger) {}
     ~StreamParser() = default;
 
-    bool parse(int sock_fd, const char* buf, size_t len) {
+    void parse(int sock_fd, const char* buf, size_t len) {
 
         // If we have a partial message for this socket, append the new data to it
         auto& partial_message = sock_to_partial_messages[sock_fd];
@@ -46,7 +46,7 @@ public:
 
                 send_error_msg(sock_fd, header->seq_num, header->client_id, REJECT_REASON::INVALID_ORDER,
                                "Unknown protocol version");
-                return false;
+                return;
             }
 
             if (header->length > MAX_OE_MESSAGE_SIZE) {
@@ -56,12 +56,12 @@ public:
                 logger->flush();
 
                 send_error_msg(sock_fd, header->seq_num, header->client_id, REJECT_REASON::INVALID_ORDER, "Message too large");
-                return false;
+                return;
             }
 
             if (partial_message.size() < header->length) {
                 // not enough bytes to parse the full message
-                return true;
+                return;
             }
 
             switch (header->msg_type) {
@@ -93,14 +93,14 @@ public:
 
                     send_error_msg(sock_fd, header->seq_num, header->client_id, REJECT_REASON::INVALID_ORDER,
                                    "Unknown message type");
-                    return false;
+                    return;
                 }
             }
 
             // remove the parsed message from the buffer
             partial_message.erase(partial_message.begin(), partial_message.begin() + header->length);
         }
-        return true;
+        return;
     }
 
     void send_error_msg(int sock_fd, uint32_t seq_num, uint32_t client_id, REJECT_REASON reason_code, const char* error_msg) {
@@ -123,6 +123,7 @@ public:
         logger->flush();
 
         sock_to_partial_messages.erase(sock_fd);
+        handler.on_socket_closed(sock_fd);
     }
 
     void new_socket(int sock_fd) {

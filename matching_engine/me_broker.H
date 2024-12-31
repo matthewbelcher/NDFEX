@@ -62,6 +62,10 @@ public:
         to_client.emplace(oe::MSG_TYPE::CLOSE, order_id, 0, client_seq, md::SIDE::BUY, 0, 0, 0);
     }
 
+    void onCancelReject(uint64_t order_id) {
+        to_client.emplace(oe::MSG_TYPE::REJECT, order_id, 0, client_seq, md::SIDE::BUY, 0, 0, 0);
+    }
+
     void onTrade(uint64_t order_id, uint32_t quantity, uint32_t price) {
         publisher.queue_trade(order_id, quantity, price);
         last_published_ts = nanotime();
@@ -128,8 +132,8 @@ public:
                     throw std::runtime_error("Invalid message type " + std::to_string(static_cast<uint8_t>(payload.msg_type)));
             }
             finishedPacket(payload.symbol);
+            from_client.pop();
         }
-        from_client.pop();
     }
 
 private:

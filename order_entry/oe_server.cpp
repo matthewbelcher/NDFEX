@@ -124,7 +124,7 @@ void EpollServer<ClientHandler>::run() {
                                 break;
                             } else {
                                 logger->error("Failed to read from socket: {}", strerror(errno));
-                                throw std::runtime_error("Failed to read from socket: " + std::string(strerror(errno)));
+                                close(events[i].data.fd);
                             }
                         } else if (len == 0) {
                             logger->info("Socket {} closed", events[i].data.fd);
@@ -133,13 +133,7 @@ void EpollServer<ClientHandler>::run() {
                             parser.socket_closed(events[i].data.fd);
                             break;
                         } else {
-                            bool socket_open = parser.parse(events[i].data.fd, buf, len);
-                            if (!socket_open) {
-                                // the parser closed the socket and sent an error message
-                                close(events[i].data.fd);
-                                parser.socket_closed(events[i].data.fd);
-                                break;
-                            }
+                            parser.parse(events[i].data.fd, buf, len);
                         }
                     }
                 }

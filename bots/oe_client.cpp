@@ -117,7 +117,7 @@ void OEClient::process() {
                 return;
             }
 
-            logger->info("Received ack for order id: {}", ack.order_id);
+            logger->info("Received ack for order id: {} {}", ack.order_id, ack.exch_order_id);
             break;
         }
         case static_cast<uint8_t>(oe::MSG_TYPE::REJECT): {

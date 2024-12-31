@@ -59,6 +59,7 @@ class ClientHandler {
         void on_new_order(int sock_fd, const new_order& msg);
         void on_delete_order(int sock_fd, const delete_order& msg);
         void on_modify_order(int sock_fd, const modify_order& msg);
+        void on_socket_closed(int sock_fd);
         void process();
 
     private:
