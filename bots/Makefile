@@ -2,7 +2,7 @@ CXX = clang++
 CXXFLAGS = -std=c++17 -Wall -Werror -I../spdlog/include -I../ -I../SPSCQueue -I../order_entry -I./
 LDFLAGS = -pthread
 
-SRC = bot_runner.cpp oe_client.cpp md_client.cpp order_book.cpp
+SRC = bot_runner.cpp oe_client.cpp md_client.cpp order_book.cpp fair_value.cpp fair_value_mm.cpp ../matching_engine/utils.cpp
 OBJ = $(SRC:.cpp=.o)
 TARGET = out/bot_runner
 

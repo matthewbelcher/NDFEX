@@ -97,6 +97,20 @@ void MDClient::process() {
     process_message(buf, len);
 }
 
+OrderBook::PriceLevel MDClient::get_best_bid(uint32_t symbol) const {
+    if (symbol_to_order_book.find(symbol) == symbol_to_order_book.end()) {
+        return {0, 0};
+    }
+    return symbol_to_order_book.at(symbol)->get_best_bid();
+}
+
+OrderBook::PriceLevel MDClient::get_best_ask(uint32_t symbol) const {
+    if (symbol_to_order_book.find(symbol) == symbol_to_order_book.end()) {
+        return {0, 0};
+    }
+    return symbol_to_order_book.at(symbol)->get_best_ask();
+}
+
 void MDClient::process_message(uint8_t* buf, size_t len) {
     while (len > 0) {
         if (len < sizeof(md::md_header)) {

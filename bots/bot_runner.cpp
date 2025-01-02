@@ -3,6 +3,9 @@
  */
 #include "oe_client.H"
 #include "md_client.H"
+#include "matching_engine/symbol_definition.H"
+#include "fair_value.H"
+#include "fair_value_mm.H"
 
 #include <spdlog/spdlog.h>
 #include <iostream>
@@ -35,20 +38,24 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // send some orders
-    client1.send_order(1, 1, ndfex::md::SIDE::BUY, 100, 1000, 0);
-    //client1.send_order(1, 2, ndfex::md::SIDE::SELL, 100, 1000, 0);
-    client1.send_order(1, 3, ndfex::md::SIDE::BUY, 100, 1000, 0);
-    client1.send_order(1, 4, ndfex::md::SIDE::BUY, 100, 800, 0);
-    client1.send_order(1, 5, ndfex::md::SIDE::SELL, 100, 1200, 0);
+    std::vector<symbol_definition> symbols = {
+        {1, 10, 1, 1000, 10000000, 0}, // GOLD
+        {2, 5, 1, 1000, 10000000, 0}, // BLUE
+    };
 
-    // cancel an order
-    client1.cancel_order(1);
+    std::vector<ndfex::bots::FairValue*> fair_values{
+        new ndfex::bots::FairValue(120, symbols[0]),
+        new ndfex::bots::FairValue(50, symbols[1]),
+    };
+
+    ndfex::bots::FairValueMarketMaker mm(client1, md_client, fair_values, symbols, logger);
 
     // process messages from the server
     while (true) {
         client1.process();
         md_client.process();
+
+        mm.process();
     }
 
     return 0;
