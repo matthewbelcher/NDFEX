@@ -350,7 +350,8 @@ ssize_t ClientHandler::write_msg(int sock_fd, Msg& msg) {
         }
         bytes_sent += n;
 
-        if (nanotime() - start > 10000) {
+        if (nanotime() - start > 10000000) {
+            logger->error("Timed out sending message to client {}", sock_fd);
             errno = ETIMEDOUT;
             return -1;
         }
