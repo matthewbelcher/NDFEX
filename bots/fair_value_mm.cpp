@@ -68,6 +68,7 @@ void FairValueMarketMaker::process() {
         }
 
         (void) md;
+
     }
 }
 } // namespace ndfex::bots

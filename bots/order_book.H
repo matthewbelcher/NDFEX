@@ -15,12 +15,14 @@ class OrderBook {
 public:
 
     struct PriceLevel {
-        int32_t price;
-        uint32_t quantity;
+        int32_t price{0};
+        uint32_t quantity{0};
     };
 
     struct Order {
-        uint32_t quantity;
+        md::SIDE side;
+        int32_t price{0};
+        uint32_t quantity{0};
     };
 
     OrderBook(std::shared_ptr<spdlog::logger> logger);
@@ -38,11 +40,17 @@ public:
 
 private:
 
+    template <typename PriceLevels>
+    void delete_order_from_levels(uint64_t order_id, PriceLevels &levels);
+
+    template <typename PriceLevels>
+    void print_levels(const PriceLevels &levels);
+
     std::shared_ptr<spdlog::logger> logger;
 
     std::unordered_map<uint64_t, OrderBook::Order> orders;
-    std::map<int32_t, PriceLevel, std::greater<int32_t>> buy_levels;
-    std::map<int32_t, PriceLevel, std::less<int32_t>> sell_levels;
+    std::map<int32_t, uint32_t, std::greater<int32_t>> buy_levels;
+    std::map<int32_t, uint32_t, std::less<int32_t>> sell_levels;
 
 };
 
