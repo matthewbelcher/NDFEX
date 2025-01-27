@@ -52,6 +52,8 @@ private:
 
     std::unordered_map<uint32_t, std::vector<new_order>> symbol_to_bids;
     std::unordered_map<uint32_t, std::vector<new_order>> symbol_to_asks;
+
+    std::unordered_map<uint64_t, uint32_t> order_to_symbol;
 };
 
 } // namespace ndfex::md

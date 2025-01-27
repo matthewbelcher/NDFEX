@@ -97,8 +97,6 @@ void SnapshotClient::process() {
                 }
 
                 md::new_order* new_order = reinterpret_cast<md::new_order*>(buf_ptr);
-                if (new_order->flags )
-
                 queue.emplace(md::MSG_TYPE::NEW_ORDER, new_order->order_id, new_order->symbol, new_order->side, new_order->quantity, new_order->price, new_order->flags);
                 break;
             }

@@ -6,7 +6,11 @@ SRC = bot_runner.cpp oe_client.cpp md_client.cpp order_book.cpp fair_value.cpp f
 OBJ = $(SRC:.cpp=.o)
 TARGET = out/bot_runner
 
-all: release
+PRINT_SNAPSHOTS_SRC = print_snapshots.cpp
+PRINT_SNAPSHOTS_OBJ = $(PRINT_SNAPSHOTS_SRC:.cpp=.o)
+PRINT_SNAPSHOTS_TARGET = out/print_snapshots
+
+all: release print_snapshots
 
 release: CXXFLAGS += -O3
 release: $(TARGET)
@@ -22,11 +26,17 @@ $(TARGET)_debug: $(OBJ)
 	mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
+$(PRINT_SNAPSHOTS_TARGET): $(PRINT_SNAPSHOTS_OBJ)
+	mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+print_snapshots: $(PRINT_SNAPSHOTS_TARGET)
+
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) $(TARGET) $(TARGET)_debug
+	rm -f $(OBJ) $(TARGET) $(TARGET)_debug $(PRINT_SNAPSHOTS_OBJ) $(PRINT_SNAPSHOTS_TARGET)
 	rm -rf out/
 
-.PHONY: all clean release debug
+.PHONY: all clean release debug print_snapshots

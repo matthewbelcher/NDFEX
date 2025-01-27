@@ -3,6 +3,8 @@
 #include "matching_engine/utils.H"
 #include <spdlog/spdlog.h>
 
+#include <iostream>
+
 namespace ndfex::md {
 
 constexpr uint32_t SNAPSHOT_INTERVAL = 500000000; // 500ms
@@ -65,23 +67,30 @@ void SnapshotWriter::process() {
                     orders.push_back({{0, sizeof(md::new_order), 0, 0, md::MSG_TYPE::NEW_ORDER},
                         payload.order_id, payload.symbol, payload.side, payload.quantity, payload.price, payload.flags});
                 }
+                order_to_symbol[payload.order_id] = payload.symbol;
                 break;
             }
             case md::MSG_TYPE::DELETE_ORDER: {
-                auto& bid_orders = symbol_to_bids[payload.symbol];
+                uint32_t symbol = order_to_symbol[payload.order_id];
+
+                auto& bid_orders = symbol_to_bids[symbol];
                 bid_orders.erase(std::remove_if(bid_orders.begin(), bid_orders.end(), [&](const new_order& order) {
                     return order.order_id == payload.order_id;
                 }), bid_orders.end());
 
-                auto& ask_orders = symbol_to_asks[payload.symbol];
+                auto& ask_orders = symbol_to_asks[symbol];
                 ask_orders.erase(std::remove_if(ask_orders.begin(), ask_orders.end(), [&](const new_order& order) {
                     return order.order_id == payload.order_id;
                 }), ask_orders.end());
+
+                order_to_symbol.erase(payload.order_id);
                 break;
             }
             case md::MSG_TYPE::MODIFY_ORDER: {
-                auto& bid_orders = symbol_to_bids[payload.symbol];
-                auto& ask_orders = symbol_to_asks[payload.symbol];
+                uint32_t symbol = order_to_symbol[payload.order_id];
+
+                auto& bid_orders = symbol_to_bids[symbol];
+                auto& ask_orders = symbol_to_asks[symbol];
 
                 auto it = std::find_if(bid_orders.begin(), bid_orders.end(), [&](const new_order& order) {
                     return order.order_id == payload.order_id;
@@ -98,7 +107,7 @@ void SnapshotWriter::process() {
                     bid_orders.erase(it);
 
                     ask_orders.push_back({{0, sizeof(md::new_order), 0, 0, md::MSG_TYPE::NEW_ORDER},
-                        payload.order_id, payload.symbol, payload.side, payload.quantity, payload.price, payload.flags});
+                        payload.order_id, symbol, payload.side, payload.quantity, payload.price, payload.flags});
                     break;
                 }
 
@@ -117,7 +126,7 @@ void SnapshotWriter::process() {
                     // order changed side
                     ask_orders.erase(it);
                     bid_orders.push_back({{0, sizeof(md::new_order), 0, 0, md::MSG_TYPE::NEW_ORDER},
-                        payload.order_id, payload.symbol, payload.side, payload.quantity, payload.price, payload.flags});
+                        payload.order_id, symbol, payload.side, payload.quantity, payload.price, payload.flags});
                     break;
                 }
 
@@ -127,8 +136,9 @@ void SnapshotWriter::process() {
 
             }
             case md::MSG_TYPE::TRADE: {
+                uint32_t symbol = order_to_symbol[payload.order_id];
                 // reduce the quantity of the order by the trade amount
-                auto& bid_orders = symbol_to_bids[payload.symbol];
+                auto& bid_orders = symbol_to_bids[symbol];
                 auto it = std::find_if(bid_orders.begin(), bid_orders.end(), [&](const new_order& order) {
                     return order.order_id == payload.order_id;
                 });
@@ -144,7 +154,7 @@ void SnapshotWriter::process() {
                     break;
                 }
 
-                auto& ask_orders = symbol_to_asks[payload.symbol];
+                auto& ask_orders = symbol_to_asks[symbol];
                 it = std::find_if(ask_orders.begin(), ask_orders.end(), [&](const new_order& order) {
                     return order.order_id == payload.order_id;
                 });
@@ -191,6 +201,9 @@ void SnapshotWriter::process() {
                 symbol, static_cast<uint32_t>(symbol_to_bids[symbol].size()),
                         static_cast<uint32_t>(symbol_to_asks[symbol].size()),
                 last_md_seq_num});
+
+            std::cout << "Writing snapshot for symbol " << symbol << std::endl;
+            std::cout << "Bids: " << symbol_to_bids[symbol].size() << ", Asks: " << symbol_to_asks[symbol].size() << std::endl;
 
             for (const auto& bid : symbol_to_bids[symbol]) {
                 write_order(bid);
