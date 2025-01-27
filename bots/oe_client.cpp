@@ -73,6 +73,8 @@ bool OEClient::login() {
     }
 
     session_id = response.session_id;
+
+    logger->info("Logged in with session id: {} {}", session_id, sock_fd);
     return true;
 }
 
@@ -124,7 +126,7 @@ void OEClient::process() {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
             return;
         }
-        logger->error("Failed to read message header: {}", strerror(errno));
+        logger->error("Failed to read message header: {} {}", strerror(errno), sock_fd);
         return;
     }
 

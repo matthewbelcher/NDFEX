@@ -31,6 +31,13 @@ MDClient::MDClient(std::string ip, uint16_t port, std::string bind_ip, std::shar
         throw std::runtime_error("Failed to set socket to non-blocking");
     }
 
+    // set SO_REUSEPORT
+    int optval = 1;
+    if (setsockopt(mcast_fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) < 0) {
+        logger->error("Failed to set SO_REUSEPORT: {}", strerror(errno));
+        throw std::runtime_error("Failed to set SO_REUSEPORT");
+    }
+
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
@@ -62,7 +69,6 @@ MDClient::~MDClient() {
 }
 
 void MDClient::wait_for_hearbeat() {
-    std::cout << "Waiting for heartbeat" << std::endl;
     while (true) {
         ssize_t len = recvfrom(mcast_fd, buf, sizeof(buf), 0, nullptr, nullptr);
         if (len < 0) {
@@ -123,6 +129,9 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
             logger->error("Invalid magic number: {}", header->magic_number);
             return;
         }
+
+        logger->info("Message type: {}", static_cast<uint8_t>(header->msg_type));
+        logger->info("Sequence number: {}", header->seq_num);
 
         switch (header->msg_type) {
             case md::MSG_TYPE::NEW_ORDER: {

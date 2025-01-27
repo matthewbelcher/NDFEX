@@ -1,7 +1,7 @@
 #pragma once
 
 #include "include/rigtorp/SPSCQueue.h"
-#include "market_data/md_protocol.H"
+#include "md_protocol.H"
 
 namespace ndfex {
 

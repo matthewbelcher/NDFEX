@@ -46,11 +46,6 @@ void OrderBook::delete_order(uint64_t order_id) {
     }
 
     auto& order = it->second;
-    if (order.price == 0) {
-        logger->warn("Order {} has no price", order_id);
-        orders.erase(it);
-        return;
-    }
     if (order.quantity == 0) {
         logger->warn("Order {} has no quantity", order_id);
         orders.erase(it);

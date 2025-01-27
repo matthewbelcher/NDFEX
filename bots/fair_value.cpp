@@ -27,9 +27,9 @@ int32_t FairValue::process(uint64_t ts) {
 
     int32_t change = walk_value(gen);
     fair_value += change;
-    if (fair_value < min_price) {
+    if (fair_value < min_price + 5 * tick_size) {
         fair_value = min_price + 5 * tick_size;
-    } else if (fair_value > max_price) {
+    } else if (fair_value > max_price - 5 * tick_size) {
         fair_value = max_price - 5 * tick_size;
     }
 

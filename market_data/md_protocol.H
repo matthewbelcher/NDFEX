@@ -8,6 +8,9 @@ namespace ndfex::md {
 static std::string go_irish = "GOIRISH!"; // 8 bytes
 static const uint64_t MAGIC_NUMBER = *reinterpret_cast<const uint64_t*>(go_irish.c_str());
 
+static std::string snapshot = "SNAPSHOT"; // 8 bytes
+static const uint64_t SNAPSHOT_MAGIC_NUMBER = *reinterpret_cast<const uint64_t*>(snapshot.c_str());
+
 enum class MSG_TYPE: uint8_t {
     HEARTBEAT = 0,
     NEW_ORDER = 1,
@@ -15,6 +18,7 @@ enum class MSG_TYPE: uint8_t {
     MODIFY_ORDER = 3,
     TRADE = 4,
     TRADE_SUMMARY = 5,
+    SNAPSHOT_INFO = 6,
 };
 
 enum class SIDE: uint8_t {
@@ -38,7 +42,7 @@ struct new_order {
     uint32_t symbol;
     SIDE side;
     uint32_t quantity;
-    uint32_t price;
+    int32_t price;
 
     uint8_t flags;
 } __attribute__((packed));
@@ -55,7 +59,7 @@ struct modify_order {
     uint64_t order_id;
     SIDE side;
     uint32_t quantity;
-    uint32_t price;
+    int32_t price;
 } __attribute__((packed));
 
 struct trade {
@@ -63,7 +67,7 @@ struct trade {
 
     uint64_t order_id;
     uint32_t quantity;
-    uint32_t price;
+    int32_t price;
 
 } __attribute__((packed));
 
@@ -73,10 +77,20 @@ struct trade_summary {
     uint32_t symbol;
     SIDE aggressor_side;
     uint32_t total_quantity;
-    uint32_t last_price;
+    int32_t last_price;
 
 } __attribute__((packed));
 
-static const uint16_t MAX_MSG_SIZE = std::max(sizeof(new_order), std::max(sizeof(delete_order), std::max(sizeof(modify_order), std::max(sizeof(trade), sizeof(trade_summary)))));
+struct snapshot_info {
+    md_header header;
+
+    uint32_t symbol;
+    uint32_t bid_count;
+    uint32_t ask_count;
+
+    uint32_t last_md_seq_num;
+} __attribute__((packed));
+
+static const uint16_t MAX_MSG_SIZE = std::max(sizeof(new_order), std::max(sizeof(delete_order), std::max(sizeof(modify_order), std::max(sizeof(trade), std::max(sizeof(trade_summary), sizeof(snapshot_info))))));
 
 } // namespace ndfex::md

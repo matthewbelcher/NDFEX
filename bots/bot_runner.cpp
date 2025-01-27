@@ -48,14 +48,21 @@ int main(int argc, char* argv[]) {
         new ndfex::bots::FairValue(50, symbols[1]),
     };
 
-    ndfex::bots::FairValueMarketMaker mm(client1, md_client, fair_values, symbols, logger);
+    std::vector<std::vector<int32_t>> variances = { {0, 0}, {0, 0}, {1, 1}, {-1, -1}, {1, 0}, {2, 0}, {0, 2}, {3, 0} };
+
+    std::vector<ndfex::bots::FairValueMarketMaker> market_makers;
+    for (size_t i = 0; i < variances.size(); i++) {
+        market_makers.emplace_back(client1, md_client, fair_values, variances[i], symbols, i < 3 ? 1 : 2, 100 - 10*i, logger);
+    }
 
     // process messages from the server
     while (true) {
         client1.process();
         md_client.process();
 
-        mm.process();
+        for (auto& mm : market_makers) {
+            mm.process();
+        }
     }
 
     return 0;
