@@ -50,9 +50,10 @@ int main(int argc, char* argv[]) {
 
     std::vector<std::vector<int32_t>> variances = { {0, 0}, {0, 0}, {1, 1}, {-1, -1}, {1, 0}, {2, 0}, {0, 2}, {3, 0} };
 
+    uint32_t last_order_id = 1;
     std::vector<ndfex::bots::FairValueMarketMaker> market_makers;
     for (size_t i = 0; i < variances.size(); i++) {
-        market_makers.emplace_back(client1, md_client, fair_values, variances[i], symbols, i < 3 ? 1 : 2, 100 - 10*i, logger);
+        market_makers.emplace_back(client1, md_client, fair_values, variances[i], symbols, i < 3 ? 1 : 2, 100 - 10*i, last_order_id, logger);
     }
 
     // process messages from the server

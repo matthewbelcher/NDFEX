@@ -11,9 +11,10 @@ FairValueMarketMaker::FairValueMarketMaker(OEClient& oe, MDClient& md,
                                            std::vector<symbol_definition> symbols,
                                            uint32_t width_in_ticks,
                                            uint32_t quantity,
+                                           uint32_t& last_order_id,
                                            std::shared_ptr<spdlog::logger> logger)
     : oe(oe), md(md), fv(fv), variances(variances), symbols(symbols),
-      width_in_ticks(width_in_ticks), quantity(quantity), logger(logger) {  }
+      width_in_ticks(width_in_ticks), quantity(quantity), last_order_id(last_order_id), logger(logger) {  }
 
 static int32_t round_to_tick_size(int32_t price, uint32_t tick_size, md::SIDE side) {
     if (side == md::SIDE::BUY) {

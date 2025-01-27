@@ -39,14 +39,12 @@ public:
                          std::vector<symbol_definition> symbols,
                          uint32_t width_in_ticks,
                          uint32_t quantity,
+                         uint32_t& last_order_id,
                          std::shared_ptr<spdlog::logger> logger);
 
     void process();
 
 private:
-
-
-    uint32_t last_order_id{1};
 
     OEClient& oe;
     MDClient& md;
@@ -57,6 +55,8 @@ private:
 
     const uint32_t width_in_ticks;
     const uint32_t quantity;
+
+    uint32_t& last_order_id;
 
     std::unordered_map<uint32_t, std::vector<open_order>> bid_orders;
     std::unordered_map<uint32_t, std::vector<open_order>> ask_orders;
