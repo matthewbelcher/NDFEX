@@ -56,6 +56,7 @@ void SnapshotWriter::process() {
     while (queue.front()) {
         md_payload& payload = *queue.front();
         // apply the message to the open order state
+        last_md_seq_num = payload.seq_num;
         switch (payload.msg_type) {
             case md::MSG_TYPE::NEW_ORDER: {
                 if (payload.side == md::SIDE::BUY) {

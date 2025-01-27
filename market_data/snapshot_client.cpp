@@ -66,7 +66,6 @@ SnapshotClient::SnapshotClient(std::string ip, uint16_t port, std::string bind_i
 
 SnapshotClient::~SnapshotClient() {
     close(mcast_fd);
-
 }
 
 void SnapshotClient::process() {
@@ -89,6 +88,8 @@ void SnapshotClient::process() {
             return;
         }
 
+        uint32_t seq_num = header->seq_num;
+
         switch (header->msg_type) {
             case md::MSG_TYPE::NEW_ORDER: {
                 if (buf_len < sizeof(md::new_order)) {
@@ -97,7 +98,7 @@ void SnapshotClient::process() {
                 }
 
                 md::new_order* new_order = reinterpret_cast<md::new_order*>(buf_ptr);
-                queue.emplace(md::MSG_TYPE::NEW_ORDER, new_order->order_id, new_order->symbol, new_order->side, new_order->quantity, new_order->price, new_order->flags);
+                queue.emplace(md::MSG_TYPE::NEW_ORDER, seq_num, new_order->order_id, new_order->symbol, new_order->side, new_order->quantity, new_order->price, new_order->flags);
                 break;
             }
             case md::MSG_TYPE::DELETE_ORDER: {
@@ -105,7 +106,7 @@ void SnapshotClient::process() {
                     logger->error("Message too short for delete order: {}", len);
                     return;
                 }
-                queue.emplace(md::MSG_TYPE::DELETE_ORDER, reinterpret_cast<md::delete_order*>(buf_ptr)->order_id, 0, md::SIDE::BUY, 0, 0, 0);
+                queue.emplace(md::MSG_TYPE::DELETE_ORDER, seq_num, reinterpret_cast<md::delete_order*>(buf_ptr)->order_id, 0, md::SIDE::BUY, 0, 0, 0);
                 break;
             }
             case md::MSG_TYPE::MODIFY_ORDER: {
@@ -115,7 +116,7 @@ void SnapshotClient::process() {
                 }
 
                 md::modify_order* modify_order = reinterpret_cast<md::modify_order*>(buf_ptr);
-                queue.emplace(md::MSG_TYPE::MODIFY_ORDER, modify_order->order_id, 0, modify_order->side, modify_order->quantity, modify_order->price, 0);
+                queue.emplace(md::MSG_TYPE::MODIFY_ORDER, seq_num, modify_order->order_id, 0, modify_order->side, modify_order->quantity, modify_order->price, 0);
                 break;
             }
             case md::MSG_TYPE::TRADE: {
@@ -125,7 +126,7 @@ void SnapshotClient::process() {
                 }
 
                 md::trade* trade = reinterpret_cast<md::trade*>(buf_ptr);
-                queue.emplace(md::MSG_TYPE::TRADE, trade->order_id, 0, md::SIDE::BUY, trade->quantity, trade->price, 0);
+                queue.emplace(md::MSG_TYPE::TRADE, seq_num, trade->order_id, 0, md::SIDE::BUY, trade->quantity, trade->price, 0);
                 break;
             }
             case md::MSG_TYPE::TRADE_SUMMARY: {
