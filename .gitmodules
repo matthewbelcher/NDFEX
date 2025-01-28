@@ -4,3 +4,6 @@
 [submodule "spdlog"]
 	path = spdlog
 	url = git@github.com:gabime/spdlog
+[submodule "FTXUI"]
+	path = FTXUI
+	url = git@github.com:ArthurSonzogni/FTXUI.git

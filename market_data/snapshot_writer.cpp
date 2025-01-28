@@ -44,6 +44,12 @@ SnapshotWriter::SnapshotWriter(std::string ip, uint16_t port, std::string bind_i
         throw std::runtime_error("Failed to set socket to non-blocking");
     }
 
+    symbol_to_asks[1] = {};
+    symbol_to_bids[1] = {};
+
+    symbol_to_asks[2] = {};
+    symbol_to_bids[2] = {};
+
     logger->info("Publishing to {}:{}", ip, port);
 
 }
@@ -172,6 +178,8 @@ void SnapshotWriter::process() {
                 }
                 break;
             }
+            case md::MSG_TYPE::HEARTBEAT:
+                break;
             default:
                 logger->error("Unknown message type: {}", static_cast<int>(payload.msg_type));
                 break;

@@ -138,6 +138,8 @@ void SnapshotClient::process() {
                 break;
             }
             case md::MSG_TYPE::HEARTBEAT: {
+                // just to update the sequence number
+                queue.emplace(md::MSG_TYPE::HEARTBEAT, seq_num, 0, 0, md::SIDE::BUY, 0, 0, 0);
                 break;
             }
             default:

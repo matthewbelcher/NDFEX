@@ -12,8 +12,8 @@
 
 int main(int argc, char* argv[]) {
 
-    if (argc != 5) {
-        std::cerr << "Usage: " << argv[0] << " <ip address> <port> <mcast ip address> <mcast bind ip>" << std::endl;
+    if (argc != 6) {
+        std::cerr << "Usage: " << argv[0] << " <ip address> <port> <mcast ip address> <snapshot ip address> <mcast bind ip>" << std::endl;
         return 1;
     }
 
@@ -21,13 +21,10 @@ int main(int argc, char* argv[]) {
     uint16_t port = std::stoi(argv[2]);
 
     std::string mcast_ip = argv[3];
-    std::string mcast_bind_ip = argv[4];
+    std::string snapshot_ip = argv[4];
+    std::string mcast_bind_ip = argv[5];
 
     auto logger = spdlog::default_logger();
-
-    // create market data client
-    ndfex::bots::MDClient md_client(mcast_ip, 12345, mcast_bind_ip, logger);
-    md_client.wait_for_hearbeat();
 
     // create bots
     ndfex::bots::user_info user1 = {"good", "password", 1};
@@ -47,6 +44,10 @@ int main(int argc, char* argv[]) {
         new ndfex::bots::FairValue(120, symbols[0]),
         new ndfex::bots::FairValue(50, symbols[1]),
     };
+
+    // create market data client
+    ndfex::bots::MDClient md_client(mcast_ip, 12345, snapshot_ip, 12346, mcast_bind_ip, logger);
+    md_client.wait_for_snapshot();
 
     std::vector<std::vector<int32_t>> variances = { {0, 0}, {0, 0}, {1, 1}, {-1, -1}, {1, 0}, {2, 0}, {0, 2}, {3, 0} };
 
