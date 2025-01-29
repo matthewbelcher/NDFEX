@@ -220,7 +220,8 @@ void ClientHandler::process() {
         auto it = exch_to_client_orders.find(payload.exch_order_id);
         if (it == exch_to_client_orders.end()) {
             uint64_t exch_order_id = payload.exch_order_id;
-            logger->warn("Unknown exch order id {}", exch_order_id);
+            logger->warn("Unknown exch order id {} msg type {}", exch_order_id,
+                static_cast<int>(payload.msg_type));
             from_matching_engine.pop();
             continue;
         }

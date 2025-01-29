@@ -135,57 +135,59 @@ void OEClient::process() {
         return;
     }
 
-    oe::oe_response_header header = *reinterpret_cast<oe::oe_response_header*>(buffer.data());
+    while (buffer.size() >= sizeof(oe::oe_response_header)) {
+        oe::oe_response_header header = *reinterpret_cast<oe::oe_response_header*>(buffer.data());
 
-    switch (header.msg_type) {
-        case static_cast<uint8_t>(oe::MSG_TYPE::ACK): {
-            if (buffer.size() < sizeof(oe::order_ack)) {
-                return;
-            }
+        switch (header.msg_type) {
+            case static_cast<uint8_t>(oe::MSG_TYPE::ACK): {
+                if (buffer.size() < sizeof(oe::order_ack)) {
+                    return;
+                }
 
-            oe::order_ack ack = *reinterpret_cast<oe::order_ack*>(buffer.data());
-            logger->info("Received ack for order id: {} {}", ack.order_id, ack.exch_order_id);
-            break;
-        }
-        case static_cast<uint8_t>(oe::MSG_TYPE::REJECT): {
-            if (buffer.size() < sizeof(oe::order_reject)) {
-                return;
+                oe::order_ack ack = *reinterpret_cast<oe::order_ack*>(buffer.data());
+                logger->info("Received ack for order id: {} {}", ack.order_id, ack.exch_order_id);
+                break;
             }
-            oe::order_reject reject = *reinterpret_cast<oe::order_reject*>(buffer.data());
+            case static_cast<uint8_t>(oe::MSG_TYPE::REJECT): {
+                if (buffer.size() < sizeof(oe::order_reject)) {
+                    return;
+                }
+                oe::order_reject reject = *reinterpret_cast<oe::order_reject*>(buffer.data());
 
-            logger->warn("Received reject for order id: {} reason: {}", reject.order_id, static_cast<int>(reject.reject_reason));
-            break;
-        }
-        case static_cast<uint8_t>(oe::MSG_TYPE::CLOSE): {
-            if (buffer.size() < sizeof(oe::order_closed)) {
-                return;
+                logger->warn("Received reject for order id: {} reason: {}", reject.order_id, static_cast<int>(reject.reject_reason));
+                break;
             }
-            oe::order_closed closed = *reinterpret_cast<oe::order_closed*>(buffer.data());
-            logger->info("Received close message for order id: {}", closed.order_id);
-            break;
-        }
-        case static_cast<uint8_t>(oe::MSG_TYPE::FILL): {
-            if (buffer.size() < sizeof(oe::order_fill)) {
-                return;
+            case static_cast<uint8_t>(oe::MSG_TYPE::CLOSE): {
+                if (buffer.size() < sizeof(oe::order_closed)) {
+                    return;
+                }
+                oe::order_closed closed = *reinterpret_cast<oe::order_closed*>(buffer.data());
+                logger->info("Received close message for order id: {}", closed.order_id);
+                break;
             }
-            oe::order_fill fill = *reinterpret_cast<oe::order_fill*>(buffer.data());
-            logger->info("Received fill for order id: {} quantity: {} price: {}", fill.order_id, fill.quantity, fill.price);
-            break;
-        }
-        case static_cast<uint8_t>(oe::MSG_TYPE::ERROR): {
-            if (buffer.size() < sizeof(oe::error_message)) {
-                return;
+            case static_cast<uint8_t>(oe::MSG_TYPE::FILL): {
+                if (buffer.size() < sizeof(oe::order_fill)) {
+                    return;
+                }
+                oe::order_fill fill = *reinterpret_cast<oe::order_fill*>(buffer.data());
+                logger->info("Received fill for order id: {} quantity: {} price: {}", fill.order_id, fill.quantity, fill.price);
+                break;
             }
-            oe::error_message err = *reinterpret_cast<oe::error_message*>(buffer.data());
-            logger->error("Received error message: {}", reinterpret_cast<char*>(err.error_message));
-            throw std::runtime_error("Received error message " + std::string(reinterpret_cast<char*>(err.error_message)));
-            break;
+            case static_cast<uint8_t>(oe::MSG_TYPE::ERROR): {
+                if (buffer.size() < sizeof(oe::error_message)) {
+                    return;
+                }
+                oe::error_message err = *reinterpret_cast<oe::error_message*>(buffer.data());
+                logger->error("Received error message: {}", reinterpret_cast<char*>(err.error_message));
+                throw std::runtime_error("Received error message " + std::string(reinterpret_cast<char*>(err.error_message)));
+                break;
+            }
+            default:
+                logger->warn("Unknown message type: {}", header.msg_type);
+                throw std::runtime_error("Unknown message type " + std::to_string(header.msg_type));
+                break;
         }
-        default:
-            logger->warn("Unknown message type: {}", header.msg_type);
-            throw std::runtime_error("Unknown message type " + std::to_string(header.msg_type));
-            break;
+        buffer.erase(buffer.begin(), buffer.begin() + header.length);
     }
-    buffer.erase(buffer.begin(), buffer.begin() + header.length);
 }
 } // namespace ndfex::bots

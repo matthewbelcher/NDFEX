@@ -129,6 +129,7 @@ void MDClient::wait_for_snapshot() {
                 md::snapshot_info* snapshot_info = reinterpret_cast<md::snapshot_info*>(buf + buf_offset);
                 if (snapshot_info->last_md_seq_num <= get_first_live_seq_num()) {
                     logger->info("Skipping snapshot: last_md_seq_num={}, first_live_seq_num={}", snapshot_info->last_md_seq_num, get_first_live_seq_num());
+                    snapshot_len = 0;
                     continue;
                 }
 
@@ -139,6 +140,10 @@ void MDClient::wait_for_snapshot() {
 
                 logger->info("Snapshot info: symbol={}, bid_count={}, ask_count={}, last_md_seq_num={}", snapshot_info->symbol, snapshot_info->bid_count,
                             snapshot_info->ask_count, snapshot_info->last_md_seq_num);
+
+                if (symbol_to_bid_orders[snapshot_info->symbol] == 0 && symbol_to_ask_orders[snapshot_info->symbol] == 0) {
+                    snapshot_complete[snapshot_info->symbol] = true;
+                }
             } else if (header->msg_type == md::MSG_TYPE::NEW_ORDER) {
 
                 // we are still receiving the snapshot
@@ -268,6 +273,7 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
                 }
                 symbol_to_order_book[new_order->symbol]->new_order(new_order->order_id, new_order->side, new_order->quantity, new_order->price, new_order->flags);
                 order_to_symbol[new_order->order_id] = new_order->symbol;
+//                std::cout << "new_order " << new_order->order_id << " " << new_order->price << std::endl;
                 break;
             }
             case md::MSG_TYPE::DELETE_ORDER: {

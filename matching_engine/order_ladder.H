@@ -104,20 +104,21 @@ namespace ndfex {
             match(order_id, side, quantity, price, buy_levels);
         }
 
+        if (notify && !(flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC))) {
+            subscriber->onNewOrder(order_id, symbol, side, quantity, price, flags);
+        }
+
         // IOC orders are not added to the ladder
-        if (flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC)) {
+        if (quantity > 0 && (flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC))) {
             if (notify) {
-                subscriber->onNewOrder(order_id, symbol, side, quantity, price, flags);
-                subscriber->onDeleteOrder(order_id);
+                // still need to notify sender that it was closed
+                subscriber->onDeleteOrder(order_id, false);
             }
             return;
         }
 
         if (quantity == 0) {
             // order is fully matched, still notify subscriber but do not add to the ladder
-            if (notify) {
-                subscriber->onNewOrder(order_id, symbol, side, quantity, price, flags);
-            }
             return;
         }
 
@@ -152,10 +153,6 @@ namespace ndfex {
             it->second.tail->next = &orders[order_id];
             orders[order_id].prev = it->second.tail;
             it->second.tail = &orders[order_id];
-        }
-
-        if (notify) {
-            subscriber->onNewOrder(order_id, symbol, side, quantity - filled_quantity, price, flags);
         }
     }
 
@@ -257,7 +254,8 @@ namespace ndfex {
                 if (order->quantity <= quantity) {
                     // order is fully matched
                     subscriber->onTrade(order->order_id, order->quantity, order->price);
-                    subscriber->onFill(order->order_id, symbol, order->side, order->quantity, order->price, static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED));
+                    subscriber->onFill(order->order_id, symbol, order->side, order->quantity, order->price,
+                     static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED));
 
                     quantity -= order->quantity;
 
@@ -280,6 +278,10 @@ namespace ndfex {
                     quantity = 0;
                     return;
                 }
+            }
+
+            if (quantity == 0) {
+                return;
             }
 
             if (price_level.head == nullptr) {

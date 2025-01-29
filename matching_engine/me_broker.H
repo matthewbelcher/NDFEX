@@ -40,7 +40,7 @@ public:
 
     void onNewOrder(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) {
         if (quantity > 0) {
-            // don't publish a new order if it was fully filled in the matching engine
+            // don't publish a new order if it was fully filled in the matching engine or it was an IOC
             publisher.publish_new_order(order_id, symbol, side, quantity, price, flags);
             last_published_ts = nanotime();
         }
@@ -55,9 +55,11 @@ public:
         to_client.emplace(oe::MSG_TYPE::ACK, order_id, symbol, client_seq, side, quantity, price, 0);
     }
 
-    void onDeleteOrder(uint64_t order_id) {
-        publisher.publish_delete_order(order_id);
-        last_published_ts = nanotime();
+    void onDeleteOrder(uint64_t order_id, bool publish = true) {
+        if (publish) {
+            publisher.publish_delete_order(order_id);
+            last_published_ts = nanotime();
+        }
 
         to_client.emplace(oe::MSG_TYPE::CLOSE, order_id, 0, client_seq, md::SIDE::BUY, 0, 0, 0);
     }

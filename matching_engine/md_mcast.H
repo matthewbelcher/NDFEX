@@ -6,7 +6,6 @@
 #include <stdexcept>
 #include <arpa/inet.h>
 
-#include "spsc_md_queue.H"
 #include "utils.H"
 
 #include <spdlog/spdlog.h>
