@@ -280,14 +280,12 @@ namespace ndfex {
                 }
             }
 
-            if (quantity == 0) {
-                return;
-            }
-
             if (price_level.head == nullptr) {
                 it = opposite_side_price_levels.erase(it);
-            } else {
-                throw std::runtime_error("Price level " + std::to_string(it->first) + " not empty but no orders?");
+            } else if (quantity > 0) {
+                // if this price level is not empty, but we still had quantity left, we should have fully matched
+                throw std::runtime_error("Price level " + std::to_string(it->first) +
+                " not empty but no orders? Impossible. Remaining quantity: " + std::to_string(quantity));
             }
         }
     }
