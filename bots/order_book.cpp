@@ -137,8 +137,10 @@ void OrderBook::order_trade(uint64_t order_id, uint32_t quantity, int32_t price)
     if (order.quantity == 0) {
         orders.erase(it);
         if (md::SIDE::BUY == order.side) {
+           buy_levels[order.price] -= quantity;
            delete_order_from_levels(order_id, buy_levels);
         } else {
+           sell_levels[order.price] -= quantity;
            delete_order_from_levels(order_id, sell_levels);
         }
     } else {

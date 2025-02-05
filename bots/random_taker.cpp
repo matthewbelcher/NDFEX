@@ -11,7 +11,7 @@ RandomTaker::RandomTaker(OEClient& oe, MDClient& md,
                          uint32_t& last_order_id,
                          std::shared_ptr<spdlog::logger> logger)
     : oe(oe), md(md), symbols(symbols), quantity(quantity), last_order_id(last_order_id), logger(logger),
-    time_dist(5000000, 500000000) {}
+    time_dist(10000000, 500000000) {}
 
 void RandomTaker::process() {
     int64_t ts = nanotime();

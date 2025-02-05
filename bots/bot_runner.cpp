@@ -60,7 +60,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::vector<ndfex::bots::RandomTaker*> takers;
-    for (size_t i = 0; i < 5; i++) {
+    for (size_t i = 0; i < 4; i++) {
         takers.push_back(new ndfex::bots::RandomTaker(client1, md_client, symbols, i+1, last_order_id, logger));
     }
 

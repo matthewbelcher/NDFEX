@@ -150,6 +150,10 @@ namespace ndfex {
 
         } else {
             // add order to the end of the list
+            if (it->second.tail == nullptr) {
+                throw std::runtime_error("Price level " + std::to_string(price) + " tail is nullptr");
+            }
+
             it->second.tail->next = &orders[order_id];
             orders[order_id].prev = it->second.tail;
             it->second.tail = &orders[order_id];
@@ -165,11 +169,17 @@ namespace ndfex {
             return;
         }
 
+        if (price_levels.find(it->second.price) == price_levels.end()) {
+            throw std::runtime_error("Price level " + std::to_string(it->second.price) + " for this order "
+                + std::to_string(order_id) + " does not exist");
+        }
+
         PriceLevel& price_level = price_levels[it->second.price];
         Order& order = it->second;
         if (price_level.head == &order) {
             price_level.head = order.next;
         }
+
         if (price_level.tail == &order) {
             price_level.tail = order.prev;
         }
@@ -177,6 +187,7 @@ namespace ndfex {
         if (order.prev) {
             order.prev->next = order.next;
         }
+
         if (order.next) {
             order.next->prev = order.prev;
         }
