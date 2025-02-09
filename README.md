@@ -12,17 +12,14 @@ Notre Dame Fake Exchange
             - Order Ladder: The actual book management and matching
             - ME Broker: handles queueing between client order entry server and matching engine
 
+        - Bot Runner: Runs a collection of very simple trading strategies to create the illusion of an active market
 
     Future:
     
         - PCAP Recorder
             - Records all traffic to / from exchange server for student debugging
 
-        Trading bots
-            - Microprice market makers - try to balance buys and sells
+        More Trading bots
+            - Microprice market makers - try to balance buys and sells, stacks
             - VWAP Broker - gets a random quantity to execute every minute and sends it semi-randomly over that time period
-            - Small retail traders - randomly send 1 lots to cross the bid / ask
-
-
-
 
