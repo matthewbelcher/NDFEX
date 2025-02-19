@@ -1,4 +1,4 @@
-#include "fair_value.H"
+#include "random_walk_fair_value.H"
 
 namespace ndfex::bots {
 
@@ -9,13 +9,13 @@ static uint32_t calculate_dist(uint32_t tick_size) {
     return tick_size / 5;
 }
 
-FairValue::FairValue(int32_t start_price, symbol_definition symbol)
+RandomWalkFairValue::RandomWalkFairValue(int32_t start_price, symbol_definition symbol)
     : fair_value(start_price), min_price(symbol.min_price), max_price(symbol.max_price),
       tick_size(symbol.tick_size),
       walk_value(-calculate_dist(tick_size), calculate_dist(tick_size)),
       time_dist(1000000, 100000000) {}
 
-int32_t FairValue::process(uint64_t ts) {
+int32_t RandomWalkFairValue::process(uint64_t ts) {
     if (last_ts == 0) {
         last_ts = ts + time_dist(gen);
         return fair_value;

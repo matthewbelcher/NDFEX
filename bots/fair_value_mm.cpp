@@ -50,7 +50,7 @@ void FairValueMarketMaker::process() {
         auto& bids = bid_orders[symbols[i].symbol];
         auto& asks = ask_orders[symbols[i].symbol];
 
-        if (bids.size() > 0 && bids.back().price != bid_price) {
+        if (bids.size() > 0 && (bids.back().price != bid_price || last_order_send_ts + 30e9 < nanotime())) {
             logger->info("Cancelling bid order: symbol={}, price={}, quantity={}", symbols[i].symbol, bid_price, quantity);
             logger->info("Price was {} and now is {} fv {} ts {}", bids.back().price, bid_price, fair_value, nanotime());
             oe.cancel_order(bids.back().order_id);
@@ -70,9 +70,10 @@ void FairValueMarketMaker::process() {
                 logger->info("Best bid: price={}, quantity={}", best_bid.price, best_bid.quantity);
             }
 
+            last_order_send_ts = nanotime();
         }
 
-        if (asks.size() > 0 && asks.back().price != ask_price) {
+        if (asks.size() > 0 && (asks.back().price != ask_price || last_order_send_ts + 30e9 < nanotime())) {
             logger->info("Cancelling ask order: symbol={}, price={}, quantity={}", symbols[i].symbol, ask_price, quantity);
             logger->info("Price was {} and now is {} fv {} ts {}", asks.back().price, ask_price, fair_value, nanotime());
             oe.cancel_order(asks.back().order_id);
@@ -92,6 +93,8 @@ void FairValueMarketMaker::process() {
             if (best_ask.price != 0) {
                 logger->info("Best ask: price={}, quantity={}", best_ask.price, best_ask.quantity);
             }
+
+            last_order_send_ts = nanotime();
         }
     }
 }

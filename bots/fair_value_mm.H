@@ -56,6 +56,8 @@ private:
     const uint32_t width_in_ticks;
     const uint32_t quantity;
 
+    uint64_t last_order_send_ts{0};
+
     uint32_t& last_order_id;
 
     std::unordered_map<uint32_t, std::vector<open_order>> bid_orders;

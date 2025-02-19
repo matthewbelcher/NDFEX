@@ -30,6 +30,11 @@ struct user_info {
     std::string username;
     std::string password;
     uint32_t client_id;
+
+    user_info(std::string username, std::string password, uint32_t client_id)
+        : username(username), password(password), client_id(client_id) {}
+
+    user_info() = default;
 };
 
 struct open_order {

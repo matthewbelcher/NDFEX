@@ -8,6 +8,7 @@
 #include <spdlog/spdlog.h>
 #include <unordered_map>
 #include <vector>
+#include <random>
 
 namespace ndfex::bots {
 
@@ -23,6 +24,7 @@ public:
                 std::vector<symbol_definition> symbols,
                 uint32_t quantity,
                 uint32_t& last_order_id,
+                uint64_t time_scale,
                 std::shared_ptr<spdlog::logger> logger);
 
     void process();

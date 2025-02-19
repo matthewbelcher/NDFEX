@@ -9,10 +9,12 @@
 #include "order_entry/oe_client_handler.H"
 
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/daily_file_sink.h>
 #include <spdlog/async.h>
 
 #include <iostream>
-#include <spdlog/sinks/daily_file_sink.h>
+#include <fstream>
+
 
 void set_cpu_affinity(int cpu) {
     cpu_set_t mask;
@@ -68,7 +70,24 @@ int main(int argc, char** argv) {
 
     // create oe_server and client handlers
     std::unordered_map<std::string, oe::user_info> users;
-    users["good"] = {"good", "password", 1};
+
+    // read users from file
+    std::ifstream user_file("users.txt");
+    if (!user_file.is_open()) {
+        std::cerr << "Failed to open users file" << std::endl;
+        return 1;
+    }
+
+    std::string line;
+    while (std::getline(user_file, line)) {
+        std::cout << line << std::endl;
+        std::stringstream ss(line);
+        std::string client_id, username, password;
+        ss >> client_id >> username >> password;
+        users[username] = {username, password, (uint32_t) std::stoi(client_id)};
+        std::cout << "Added user: " << username << " " << password << " " << client_id << std::endl;
+    }
+
 
     auto symbols_map = [] (const std::vector<symbol_definition>& symbols) {
         std::unordered_map<uint32_t, symbol_definition> map;
