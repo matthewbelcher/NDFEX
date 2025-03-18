@@ -33,6 +33,11 @@ REJECT_REASON OrderEntryValidator::validate_new_order(uint64_t order_id, uint32_
         return REJECT_REASON::INVALID_PRICE;
     }
 
+    if (quantity == 0) {
+        logger->error("Quantity is 0");
+        return REJECT_REASON::INVALID_QUANTITY;
+    }
+
     return REJECT_REASON::NONE;
 }
 

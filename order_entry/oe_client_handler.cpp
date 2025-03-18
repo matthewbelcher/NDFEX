@@ -165,7 +165,8 @@ void ClientHandler::on_new_order(int sock_fd, const new_order& msg) {
     exch_to_client_orders[exch_order_id] = {msg.header.client_id, msg.order_id};
 
     logger->info("Client order id {} mapped to exch order id {}", msg.order_id, exch_order_id);
-    to_matching_engine.emplace(MSG_TYPE::NEW_ORDER, exch_order_id, msg.symbol, msg.header.seq_num, msg.side, msg.quantity, msg.price, msg.flags);
+    to_matching_engine.emplace(MSG_TYPE::NEW_ORDER, exch_order_id, msg.symbol, msg.header.seq_num, msg.header.client_id,
+        msg.side, msg.quantity, msg.price, msg.flags);
 }
 
 void ClientHandler::on_delete_order(int sock_fd, const delete_order& msg) {
@@ -185,11 +186,13 @@ void ClientHandler::on_delete_order(int sock_fd, const delete_order& msg) {
     }
 
     auto client_order = client_to_open_orders.at(msg.header.client_id).at(msg.order_id);
-    to_matching_engine.emplace(MSG_TYPE::DELETE_ORDER, client_order.exch_order_id, client_order.symbol, msg.header.seq_num, md::SIDE::BUY, 0, 0, 0);
+    to_matching_engine.emplace(MSG_TYPE::DELETE_ORDER, client_order.exch_order_id, client_order.symbol,
+        msg.header.seq_num, msg.header.client_id, md::SIDE::BUY, 0, 0, 0);
 }
 
 void ClientHandler::on_modify_order(int sock_fd, const modify_order& msg) {
-    logger->info("Received modify order from client {}", msg.header.client_id);
+    logger->info("Received modify order from client {}, order id: {} side: {} quantity: {} price: {}",
+                 msg.header.client_id, msg.order_id, static_cast<uint8_t>(msg.side), msg.quantity, msg.price);
     if (!validate_session(sock_fd, msg.header.session_id, msg.header.client_id)) {
         logger->warn("Invalid session for modify order from client {}", msg.header.client_id);
         send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SESSION_ID), msg.order_id);
@@ -210,7 +213,7 @@ void ClientHandler::on_modify_order(int sock_fd, const modify_order& msg) {
         return;
     }
     to_matching_engine.emplace(MSG_TYPE::MODIFY_ORDER, client_order.exch_order_id, client_order.symbol,
-                                msg.header.seq_num, msg.side, msg.quantity, msg.price, 0);
+                                msg.header.seq_num, msg.header.client_id, msg.side, msg.quantity, msg.price, 0);
 }
 
 void ClientHandler::process() {
@@ -218,10 +221,32 @@ void ClientHandler::process() {
         oe_payload& payload = *from_matching_engine.front();
 
         auto it = exch_to_client_orders.find(payload.exch_order_id);
-        if (it == exch_to_client_orders.end()) {
+        if (payload.msg_type != MSG_TYPE::REJECT && it == exch_to_client_orders.end()) {
             uint64_t exch_order_id = payload.exch_order_id;
             logger->warn("Unknown exch order id {} msg type {}", exch_order_id,
                 static_cast<int>(payload.msg_type));
+            from_matching_engine.pop();
+            continue;
+        }
+
+        // handle rejects first since they don't have an exch order id
+        if (payload.msg_type == MSG_TYPE::REJECT) {
+            int sock_fd = get_sock_fd(payload.client_id);
+            if (sock_fd == -1) {
+                logger->warn("Client {} not found for reject", payload.client_id);
+                from_matching_engine.pop();
+                continue;
+            }
+
+            order_reject reject;
+            reject.header.msg_type = static_cast<uint8_t>(MSG_TYPE::REJECT);
+            reject.reject_reason = payload.flags; // flags is the reject reason
+            reject.order_id = payload.exch_order_id; // no exch order id is generated for rejects so pass this through
+
+            logger->info("Sending reject to client {} seq {} order id {} reason {}", payload.client_id,
+                payload.client_seq, payload.exch_order_id, payload.flags);
+
+            write_msg_to_client(payload.client_id, payload.client_seq, reject);
             from_matching_engine.pop();
             continue;
         }
@@ -279,24 +304,9 @@ void ClientHandler::process() {
                 break;
             }
             case oe::MSG_TYPE::REJECT: {
-                int sock_fd = get_sock_fd(client_id);
-                if (sock_fd == -1) {
-                    logger->warn("Client {} not found for reject", client_id);
-                    break;
-                }
-
-                order_reject reject;
-                reject.header.msg_type = static_cast<uint8_t>(MSG_TYPE::REJECT);
-                reject.reject_reason = payload.flags; // flags is the reject reason
-                reject.order_id = payload.exch_order_id; // no exch order id is generated for rejects so pass this through
-
-                logger->info("Sending reject to client {} seq {} order id {} reason {}", client_id, payload.client_seq,
-                             client_order_id, payload.flags);
-
-                write_msg_to_client(client_id, payload.client_seq, reject);
+                // already handled above
                 break;
             }
-
             default:
                 logger->warn("Unknown message type from matching engine: {}", static_cast<uint8_t>(payload.msg_type));
                 break;
@@ -329,7 +339,7 @@ void ClientHandler::write_msg_to_client(uint32_t client_id, uint32_t last_seq_nu
 template <typename Msg>
 ssize_t ClientHandler::write_msg(int sock_fd, Msg& msg) {
     // fill in the header fields
-    auto session_info = sock_to_session_info[sock_fd];
+    auto& session_info = sock_to_session_info[sock_fd];
 
     msg.header.length = sizeof(Msg);
     msg.header.version = OE_PROTOCOL_VERSION;
@@ -372,7 +382,7 @@ void ClientHandler::send_order_reject(int sock_fd, uint32_t seq_num, uint32_t cl
     logger->warn("Sending order reject to client {} seq {} reason {}", client_id, seq_num, static_cast<int>(reason_code));
 
     // send the reject message to the client via the broker so the sequence numbers are correct
-    to_matching_engine.emplace(MSG_TYPE::REJECT, order_id, 0, seq_num, md::SIDE::BUY, 0, 0, reason_code);
+    to_matching_engine.emplace(MSG_TYPE::REJECT, order_id, 0, seq_num, client_id, md::SIDE::BUY, 0, 0, reason_code);
 }
 
 void ClientHandler::cancel_all_client_orders(uint32_t client_id) {
@@ -383,7 +393,8 @@ void ClientHandler::cancel_all_client_orders(uint32_t client_id) {
     }
 
     for (auto& [order_id, order] : it->second) {
-        to_matching_engine.emplace(MSG_TYPE::DELETE_ORDER, order.exch_order_id, order.symbol, 0, md::SIDE::BUY, 0, 0, 0);
+        to_matching_engine.emplace(MSG_TYPE::DELETE_ORDER, order.exch_order_id, order.symbol, 0, client_id,
+        md::SIDE::BUY, 0, 0, 0);
     }
 
     client_to_open_orders.erase(it);

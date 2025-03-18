@@ -226,8 +226,8 @@ namespace ndfex {
     void OrderLadder<Subscriber>::modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price) {
         auto it = orders.find(order_id);
         if (it == orders.end()) {
-            // order does not exist
-            throw OrderNotFoundException("Order " + std::to_string(order_id) + " does not exist");
+            subscriber->onCancelReject(order_id);
+            return;
         }
 
         if (it->second.filled_quantity >= quantity) {

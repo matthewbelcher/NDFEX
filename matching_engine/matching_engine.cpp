@@ -30,12 +30,13 @@ using namespace ndfex;
 int main(int argc, char** argv) {
 
     // get ip address from command line
-    if (argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " <ip address>" << std::endl;
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " <ip address> <mcast ip>" << std::endl;
         return 1;
     }
 
     std::string bind_ip = argv[1];
+    std::string mcast_ip = argv[2];
 
     std::vector<symbol_definition> symbols = {
         {1, 10, 1, 1000, 10000000, 0}, // GOLD
@@ -54,7 +55,7 @@ int main(int argc, char** argv) {
     async_file->flush();
 
     // create market data publisher
-    MarketDataPublisher publisher("239.1.3.37", 12345, bind_ip, async_file);
+    MarketDataPublisher publisher(mcast_ip, 12345, bind_ip, async_file);
 
     // create broker queues
     SPSCOEQueue to_client(1000);

@@ -138,6 +138,8 @@ void OEClient::process() {
     while (buffer.size() >= sizeof(oe::oe_response_header)) {
         oe::oe_response_header header = *reinterpret_cast<oe::oe_response_header*>(buffer.data());
 
+        logger->info("Received exch msg: {} {}", (int) header.msg_type, header.seq_num);
+
         switch (header.msg_type) {
             case static_cast<uint8_t>(oe::MSG_TYPE::ACK): {
                 if (buffer.size() < sizeof(oe::order_ack)) {
