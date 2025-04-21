@@ -146,7 +146,7 @@ void ClientHandler::on_new_order(int sock_fd, const new_order& msg) {
         return;
     }
 
-    auto reject = validator.validate_new_order(msg.order_id, msg.symbol, msg.side, msg.quantity, msg.price, msg.flags);
+    auto reject = validator.validate_new_order(msg.order_id, msg.symbol, msg.side, msg.quantity, msg.price, msg.flags, msg.display_quantity);
     if (reject != REJECT_REASON::NONE) {
         send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(reject), msg.order_id);
         return;

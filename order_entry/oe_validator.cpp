@@ -6,7 +6,7 @@ OrderEntryValidator::OrderEntryValidator(std::unordered_map<uint32_t, symbol_def
     : symbols(symbols), logger(logger) {
 }
 
-REJECT_REASON OrderEntryValidator::validate_new_order(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) {
+REJECT_REASON OrderEntryValidator::validate_new_order(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, uint32_t display_quantity) {
     auto it = symbols.find(symbol);
     if (it == symbols.end()) {
         logger->error("Symbol {} not found", symbol);
@@ -36,6 +36,17 @@ REJECT_REASON OrderEntryValidator::validate_new_order(uint64_t order_id, uint32_
     if (quantity == 0) {
         logger->error("Quantity is 0");
         return REJECT_REASON::INVALID_QUANTITY;
+    }
+
+    // Validation for special orders (AON and Iceberg)
+    if (flags & static_cast<uint8_t>(ORDER_FLAGS::AON)) {
+        // AON validation rules
+    }
+
+    if (flags & static_cast<uint8_t>(ORDER_FLAGS::ICEBERG)) {
+        if (display_quantity == 0 || display_quantity > quantity) {
+            return REJECT_REASON::INVALID_QUANTITY;
+        }
     }
 
     return REJECT_REASON::NONE;

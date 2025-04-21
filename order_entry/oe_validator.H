@@ -14,7 +14,7 @@ class OrderEntryValidator {
 public:
     OrderEntryValidator(std::unordered_map<uint32_t, symbol_definition>& symbols, std::shared_ptr<spdlog::logger> logger);
 
-    REJECT_REASON validate_new_order(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags);
+    REJECT_REASON validate_new_order(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, uint32_t display_quantity = 0);
 
 private:
     std::unordered_map<uint32_t, symbol_definition>& symbols;

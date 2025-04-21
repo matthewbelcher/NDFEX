@@ -9,7 +9,7 @@
 #pragma once
 
 #include <cstdint>
-#include <market_data/md_protocol.H>
+#include "market_data/md_protocol.H"
 
 namespace ndfex::oe {
 
@@ -58,9 +58,12 @@ enum class LOGIN_STATUS: uint8_t {
     INVALID_CLIENT_ID = 10,
 };
 
+// Updated to include new order types
 enum class ORDER_FLAGS: uint8_t {
     NONE = 0,
     IOC = 1,
+    AON = 2,
+    ICEBERG = 3,
 };
 
 enum class FILL_FLAGS: uint8_t {
@@ -107,6 +110,8 @@ struct new_order {
     uint32_t quantity;
     int32_t price;
     uint8_t flags;
+    // For iceberg orders
+    uint32_t display_quantity; 
 } __attribute__((packed));
 
 struct delete_order {
