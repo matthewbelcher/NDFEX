@@ -21,8 +21,11 @@ namespace ndfex {
         public:
             uint64_t order_id;
             uint64_t timestamp;
-            uint32_t quantity;
+            uint32_t quantity; // current visible quantity **
             uint32_t filled_quantity;
+            // Updated for iceberg orders
+            uint32_t total_quantity; // total order size
+            uint32_t display_quantity; // displayed quantity for iceberg orders
             int32_t price;
             md::SIDE side;
             uint8_t flags;
@@ -55,7 +58,7 @@ namespace ndfex {
         ~OrderLadder() = default;
 
         template <bool notify = true>
-        void new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, uint32_t filled_quantity = 0);
+        void new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, uint32_t filled_quantity = 0, uint32_t display_quantity = 0);
 
         template <bool notify = true>
         void delete_order(uint64_t order_id);
@@ -65,12 +68,12 @@ namespace ndfex {
     private:
 
         template <typename PriceLevels>
-        void match(uint64_t order_id, md::SIDE side, uint32_t& quantity, int32_t price,
+        void match(uint64_t order_id, md::SIDE side, uint32_t& quantity, int32_t price, uint8_t flags,
                    PriceLevels& opposite_side_price_levels);
 
         template <typename PriceLevels>
         void handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, PriceLevels& price_levels,
-                              bool notify, uint32_t filled_quantity);
+                              bool notify, uint32_t filled_quantity, uint32_t display_quantity);
 
         template <typename PriceLevels>
         void handle_delete_order(uint64_t order_id, PriceLevels& price_levels);
@@ -79,18 +82,18 @@ namespace ndfex {
     template <typename Subscriber>
     template <bool notify>
     void OrderLadder<Subscriber>::new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags,
-                                            uint32_t filled_quantity) {
+                                            uint32_t filled_quantity, uint32_t display_quantity) {
         if (side == md::SIDE::BUY) {
-            handle_new_order(order_id, side, quantity, price, flags, buy_levels, notify, filled_quantity);
+            handle_new_order(order_id, side, quantity, price, flags, buy_levels, notify, filled_quantity, display_quantity);
         } else {
-            handle_new_order(order_id, side, quantity, price, flags, sell_levels, notify, filled_quantity);
+            handle_new_order(order_id, side, quantity, price, flags, sell_levels, notify, filled_quantity, display_quantity);
         }
     }
 
     template <typename Subscriber>
     template <typename PriceLevels>
     void OrderLadder<Subscriber>::handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags,
-                                                   PriceLevels& price_levels, bool notify, uint32_t filled_quantity) {
+                                                   PriceLevels& price_levels, bool notify, uint32_t filled_quantity, uint32_t display_quantity) {
         if (quantity > filled_quantity) {
             quantity = quantity - filled_quantity;
         } else {
@@ -99,9 +102,9 @@ namespace ndfex {
 
         uint32_t prematch_quantity = quantity;
         if (side == md::SIDE::BUY) {
-            match(order_id, side, quantity, price, sell_levels);
+            match(order_id, side, quantity, price, flags, sell_levels);
         } else {
-            match(order_id, side, quantity, price, buy_levels);
+            match(order_id, side, quantity, price, flags, buy_levels);
         }
 
         if (notify && !(flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC))) {
@@ -131,33 +134,67 @@ namespace ndfex {
             throw std::runtime_error("Impossible");
         }
 
-        // create new order
-        Order& order = orders[order_id]; // create new order
-        order.order_id = order_id;
-        order.timestamp = 0;
-        order.quantity = quantity;
-        order.filled_quantity = prematch_quantity - quantity;
-        order.price = price;
-        order.side = side;
-        order.flags = flags;
-        order.next = nullptr;
-        order.prev = nullptr;
+        if (quantity > 0 && (flags & static_cast<uint8_t>(oe::ORDER_FLAGS::ICEBERG))) {
+            // Create new order
+            Order& order = orders[order_id];
+            order.order_id = order_id;
+            order.timestamp = 0;
+            order.quantity = std::min(quantity, display_quantity); // Show only display quantity
+            order.total_quantity = quantity;
+            order.display_quantity = display_quantity;
+            order.filled_quantity = prematch_quantity - quantity;
+            order.price = price;
+            order.side = side;
+            order.flags = flags;
+            order.next = nullptr;
+            order.prev = nullptr;
 
-        auto it = price_levels.find(price);
-        if (it == price_levels.end()) {
-            // insert order into the ladder
-            price_levels.insert({price, {&order, &order}});
+            auto it = price_levels.find(price);
+            if (it == price_levels.end()) {
+                // insert order into the ladder
+                price_levels.insert({price, {&order, &order}});
 
-        } else {
-            // add order to the end of the list
-            if (it->second.tail == nullptr) {
-                throw std::runtime_error("Price level " + std::to_string(price) + " tail is nullptr");
+            } else {
+                // add order to the end of the list
+                if (it->second.tail == nullptr) {
+                    throw std::runtime_error("Price level " + std::to_string(price) + " tail is nullptr");
+                }
+
+                it->second.tail->next = &orders[order_id];
+                orders[order_id].prev = it->second.tail;
+                it->second.tail = &orders[order_id];
             }
-
-            it->second.tail->next = &orders[order_id];
-            orders[order_id].prev = it->second.tail;
-            it->second.tail = &orders[order_id];
         }
+        else {
+            // create new order
+            Order& order = orders[order_id]; // create new order
+            order.order_id = order_id;
+            order.timestamp = 0;
+            order.quantity = quantity;
+            order.display_quantity = quantity;
+            order.filled_quantity = prematch_quantity - quantity;
+            order.price = price;
+            order.side = side;
+            order.flags = flags;
+            order.next = nullptr;
+            order.prev = nullptr;
+
+            auto it = price_levels.find(price);
+            if (it == price_levels.end()) {
+                // insert order into the ladder
+                price_levels.insert({price, {&order, &order}});
+
+            } else {
+                // add order to the end of the list
+                if (it->second.tail == nullptr) {
+                    throw std::runtime_error("Price level " + std::to_string(price) + " tail is nullptr");
+                }
+
+                it->second.tail->next = &orders[order_id];
+                orders[order_id].prev = it->second.tail;
+                it->second.tail = &orders[order_id];
+            }
+        }   
     }
 
     template <typename Subscriber>
@@ -250,8 +287,39 @@ namespace ndfex {
 
     template <typename Subscriber>
     template <typename PriceLevels>
-    void OrderLadder<Subscriber>::match(uint64_t incoming_order_id, md::SIDE side, uint32_t& quantity, int32_t price,
+    void OrderLadder<Subscriber>::match(uint64_t incoming_order_id, md::SIDE side, uint32_t& quantity, int32_t price, uint8_t flags,
                                         PriceLevels& opposite_side_price_levels) {
+        
+        // AON match logic                                   
+        if (flags & static_cast<uint8_t>(oe::ORDER_FLAGS::AON)) {
+            uint32_t available_liquidity = 0;
+            auto it_check = opposite_side_price_levels.begin();
+
+            while (it_check != opposite_side_price_levels.end()) {
+                if ((side == md::SIDE::BUY && it_check->first > price) || 
+                    (side == md::SIDE::SELL && it_check->first < price)) {
+                    break;
+                }
+
+                PriceLevel& price_level = it_check->second;
+                Order* order = price_level.head;
+            
+                while (order) {
+                    available_liquidity += order->quantity;
+                    order = order->next;
+                }
+            
+                ++it_check;
+            }
+
+            if (available_liquidity < quantity) {
+                if (flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC)) {
+                    subscriber->onDeleteOrder(incoming_order_id, false);
+                }
+                return;
+            }
+        }
+
         // check if there are any orders on the opposite side at the same or better price level
         auto it = opposite_side_price_levels.begin();
         while (it != opposite_side_price_levels.end() && quantity > 0) {
@@ -272,8 +340,24 @@ namespace ndfex {
 
                     subscriber->onFill(incoming_order_id, symbol, side, order->quantity, order->price,
                                        static_cast<uint8_t>(quantity > 0 ? oe::FILL_FLAGS::PARTIAL_FILL : oe::FILL_FLAGS::CLOSED));
-
+                    
                     auto to_delete = order;
+                    // Iceberg order handling
+                    if (to_delete->flags & static_cast<uint8_t>(oe::ORDER_FLAGS::ICEBERG)) {
+                        uint32_t remaining_total = order->total_quantity - order->filled_quantity - order->quantity;
+                        if (remaining_total > 0) {
+                            // Update filled quantity
+                            order->filled_quantity += order->quantity;
+                            
+                            // There's still hidden quantity, don't delete the order
+                            order->quantity = std::min(remaining_total, order->display_quantity);
+                            
+                            // Continue with next order
+                            order = order->next;
+                            continue;
+                        }
+                    }
+
                     order = order->next;
                     handle_delete_order(to_delete->order_id, opposite_side_price_levels);
                 } else {

@@ -1,5 +1,6 @@
 #include "md_mcast.H"
 #include "utils.H"
+#include "order_entry/oe_protocol.H"
 
 #include <errno.h>
 #include <sys/socket.h>
@@ -57,15 +58,20 @@ MarketDataPublisher::MarketDataPublisher(
 }
 
 void MarketDataPublisher::publish_new_order(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, uint32_t price, uint8_t flags) {
+    
+    // Logic for Iceberg orders
+    uint32_t visible_quantity = quantity; // don't publish iceberg quantity
+    uint8_t visible_flags = flags & ~static_cast<uint8_t>(oe::ORDER_FLAGS::ICEBERG); // don't publish iceberg flag
+
     md::new_order msg;
     msg.header.length = sizeof(md::new_order);
     msg.header.msg_type = md::MSG_TYPE::NEW_ORDER;
     msg.order_id = order_id;
     msg.symbol = symbol;
     msg.side = side;
-    msg.quantity = quantity;
+    msg.quantity = visible_quantity;
     msg.price = price;
-    msg.flags = flags;
+    msg.flags = visible_flags;
 
     write_msg(msg);
     send();
