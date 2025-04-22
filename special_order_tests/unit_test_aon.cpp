@@ -17,7 +17,7 @@ void test_aon_order_insufficient_liquidity() {
     
     // Reset subscriber to clear events from initial orders
     test_ladder.subscriber.reset();
-    
+
     // Add an AON order that requires more liquidity
     test_ladder.addOrder(2001, md::SIDE::BUY, 10, 101, static_cast<uint8_t>(oe::ORDER_FLAGS::AON));
     
@@ -37,18 +37,19 @@ void test_aon_order_sufficient_liquidity() {
     // Add enough liquidity to the sell side
     test_ladder.addOrder(1001, md::SIDE::SELL, 7, 100);
     test_ladder.addOrder(1002, md::SIDE::SELL, 5, 101);
-    
+
     // Reset subscriber to clear events from initial orders
     test_ladder.subscriber.reset();
     
     // Add an AON order with sufficient liquidity
-    test_ladder.addOrder(2001, md::SIDE::BUY, 10, 101, static_cast<uint8_t>(oe::ORDER_FLAGS::AON));
+    uint64_t order_id = 2001;
+    test_ladder.addOrder(order_id, md::SIDE::BUY, 10, 101, static_cast<uint8_t>(oe::ORDER_FLAGS::AON));
     
     // Verify trades occurred
     assert_true(test_ladder.subscriber.trade_count > 0, "Trades should occur with sufficient liquidity");
     
     // Verify total filled quantity matches order quantity
-    assert_equal(10, test_ladder.subscriber.calculateTotalFilled(), "Total filled quantity should match order quantity");
+    assert_equal(10, test_ladder.subscriber.calculateTotalFilled(order_id), "Total filled quantity should match order quantity");
 }
 
 void test_aon_ioc_order_insufficient_liquidity() {

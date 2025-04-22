@@ -1,11 +1,10 @@
-#pragma once
-
 #include "../market_data/md_protocol.H"
 #include "../order_entry/oe_protocol.H"
 
 #include <vector>
 #include <cstdint>
 #include <string>
+#include <iostream>
 
 namespace ndfex {
 
@@ -24,6 +23,7 @@ public:
         uint32_t symbol;
         md::SIDE side;
         uint32_t quantity;
+        uint32_t display_quantity;
         int32_t price;
         uint8_t flags;
     };
@@ -78,9 +78,9 @@ public:
     }
     
     // Subscriber interface implementation
-    void onNewOrder(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) {
+    void onNewOrder(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, uint32_t display_quantity, int32_t price, uint8_t flags) {
         new_order_count++;
-        new_orders.push_back({order_id, symbol, side, quantity, price, flags});
+        new_orders.push_back({order_id, symbol, side, quantity, display_quantity, price, flags});
     }
     
     void onDeleteOrder(uint64_t order_id, bool publish = true) {
@@ -100,6 +100,7 @@ public:
     
     void onFill(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) {
         fill_count++;
+        // std::cout << "Fill count: " << fill_count << std::endl;
         fills.push_back({order_id, symbol, side, quantity, price, flags});
     }
     
@@ -112,10 +113,13 @@ public:
     }
     
     // Helper to calculate total filled quantity
-    uint32_t calculateTotalFilled() const {
+    uint32_t calculateTotalFilled(uint64_t order_id) const {
         uint32_t total = 0;
         for (const auto& fill : fills) {
-            total += fill.quantity;
+            if (fill.order_id == order_id) {
+                // std::cout << "Fill qty: " << fill.quantity << std::endl;
+                total += fill.quantity;
+            }
         }
         return total;
     }

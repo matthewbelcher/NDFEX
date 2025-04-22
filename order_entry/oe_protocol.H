@@ -9,7 +9,7 @@
 #pragma once
 
 #include <cstdint>
-#include "market_data/md_protocol.H"
+#include "../market_data/md_protocol.H"
 
 namespace ndfex::oe {
 
@@ -63,7 +63,7 @@ enum class ORDER_FLAGS: uint8_t {
     NONE = 0,
     IOC = 1,
     AON = 2,
-    ICEBERG = 3,
+    ICEBERG = 4,
 };
 
 enum class FILL_FLAGS: uint8_t {

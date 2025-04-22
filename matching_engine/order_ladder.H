@@ -6,8 +6,8 @@
 #include <stdexcept>
 #include <iostream>
 
-#include "market_data/md_protocol.H"
-#include "order_entry/oe_protocol.H"
+#include "../market_data/md_protocol.H"
+#include "../order_entry/oe_protocol.H"
 #include "exceptions.H"
 
 namespace ndfex {
@@ -94,6 +94,7 @@ namespace ndfex {
     template <typename PriceLevels>
     void OrderLadder<Subscriber>::handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags,
                                                    PriceLevels& price_levels, bool notify, uint32_t filled_quantity, uint32_t display_quantity) {
+        
         if (quantity > filled_quantity) {
             quantity = quantity - filled_quantity;
         } else {
@@ -107,15 +108,14 @@ namespace ndfex {
             match(order_id, side, quantity, price, flags, buy_levels);
         }
 
-        if (notify && !(flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC))) {
-            subscriber->onNewOrder(order_id, symbol, side, quantity, price, flags);
-        }
-
         // IOC orders are not added to the ladder
         if (quantity > 0 && (flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC))) {
             if (notify) {
-                // still need to notify sender that it was closed
+                if (!(flags & static_cast<uint8_t>(oe::ORDER_FLAGS::AON))) {
                 subscriber->onDeleteOrder(order_id, false);
+                }
+                // still need to notify sender that it was closed
+                
             }
             return;
         }
@@ -135,17 +135,19 @@ namespace ndfex {
         }
 
         if (quantity > 0 && (flags & static_cast<uint8_t>(oe::ORDER_FLAGS::ICEBERG))) {
+            // std::cout << "DEBUG: in iceberg" << std::endl;
+
             // Create new order
             Order& order = orders[order_id];
             order.order_id = order_id;
             order.timestamp = 0;
-            order.quantity = std::min(quantity, display_quantity); // Show only display quantity
+            order.quantity =  quantity;
             order.total_quantity = quantity;
-            order.display_quantity = display_quantity;
+            order.display_quantity = std::min(quantity, display_quantity); // Show only display quantity
             order.filled_quantity = prematch_quantity - quantity;
             order.price = price;
             order.side = side;
-            order.flags = flags;
+            order.flags = flags & ~static_cast<uint8_t>(oe::ORDER_FLAGS::ICEBERG);
             order.next = nullptr;
             order.prev = nullptr;
 
@@ -195,6 +197,10 @@ namespace ndfex {
                 it->second.tail = &orders[order_id];
             }
         }   
+
+        if (notify && !(flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC))) {
+            subscriber->onNewOrder(order_id, symbol, side, quantity, display_quantity, price, flags & ~static_cast<uint8_t>(oe::ORDER_FLAGS::ICEBERG));
+        }
     }
 
     template <typename Subscriber>
@@ -335,6 +341,8 @@ namespace ndfex {
                     subscriber->onTrade(order->order_id, order->quantity, order->price);
                     subscriber->onFill(order->order_id, symbol, order->side, order->quantity, order->price,
                      static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED));
+                    // delete order for subscriber when fully matched -> used in unit test, review if necessary
+                    subscriber->onDeleteOrder(order->order_id, false);
 
                     quantity -= order->quantity;
 

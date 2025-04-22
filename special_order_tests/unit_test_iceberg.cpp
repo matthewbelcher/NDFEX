@@ -21,9 +21,10 @@ void test_iceberg_order_display() {
     assert_equal(1, test_ladder.subscriber.new_order_count, "Order should be added to the book");
     
     // Verify only display quantity is visible
+    // std::cout << "DEBUG: display qty" << test_ladder.subscriber.new_orders[0].quantity << std::endl;
     assert_true(
         !test_ladder.subscriber.new_orders.empty() && 
-        test_ladder.subscriber.new_orders[0].quantity == display_quantity,
+        test_ladder.subscriber.new_orders[0].display_quantity == display_quantity,
         "Only display quantity should be visible"
     );
     
@@ -37,15 +38,16 @@ void test_iceberg_order_display() {
 
 void test_iceberg_order_partial_fill_refresh() {
     TestOrderLadder test_ladder(1);
+
+    // Reset subscriber to clear events from initial order
+    test_ladder.subscriber.reset();
     
     // Add an iceberg order
     uint32_t total_quantity = 100;
     uint32_t display_quantity = 20;
-    test_ladder.addOrder(1001, md::SIDE::BUY, total_quantity, 100, 
+    uint64_t order_id = 1001;
+    test_ladder.addOrder(order_id, md::SIDE::BUY, total_quantity, 100, 
                      static_cast<uint8_t>(oe::ORDER_FLAGS::ICEBERG), display_quantity);
-    
-    // Reset subscriber to clear events from initial order
-    test_ladder.subscriber.reset();
     
     // Add a sell order that will partially fill the iceberg
     test_ladder.addOrder(2001, md::SIDE::SELL, 15, 100);
@@ -54,7 +56,7 @@ void test_iceberg_order_partial_fill_refresh() {
     assert_equal(1, test_ladder.subscriber.trade_count, "Trade should occur");
     
     // Verify fill quantity
-    assert_equal(15, test_ladder.subscriber.calculateTotalFilled(), "Fill quantity should match");
+    assert_equal(15, test_ladder.subscriber.calculateTotalFilled(order_id), "Fill quantity should match");
     
     // Verify iceberg was refreshed (this requires checking the order book internals)
     // For now, we'll verify the order still exists
@@ -64,14 +66,15 @@ void test_iceberg_order_partial_fill_refresh() {
 void test_iceberg_order_complete_execution() {
     TestOrderLadder test_ladder(1);
     
+    // Reset subscriber to clear events from initial order
+    test_ladder.subscriber.reset();
+    
     // Add an iceberg order
     uint32_t total_quantity = 100;
     uint32_t display_quantity = 20;
-    test_ladder.addOrder(1001, md::SIDE::BUY, total_quantity, 100, 
+    uint64_t order_id = 1001;
+    test_ladder.addOrder(order_id, md::SIDE::BUY, total_quantity, 100, 
                      static_cast<uint8_t>(oe::ORDER_FLAGS::ICEBERG), display_quantity);
-    
-    // Reset subscriber to clear events from initial order
-    test_ladder.subscriber.reset();
     
     // Add multiple sell orders to completely fill the iceberg
     test_ladder.addOrder(2001, md::SIDE::SELL, 40, 100);
@@ -81,7 +84,7 @@ void test_iceberg_order_complete_execution() {
     assert_true(test_ladder.subscriber.trade_count > 1, "Multiple trades should occur");
     
     // Verify total filled quantity matches total order quantity
-    assert_equal(100, test_ladder.subscriber.calculateTotalFilled(), "Total filled should match total quantity");
+    assert_equal(100, test_ladder.subscriber.calculateTotalFilled(order_id), "Total filled should match total quantity");
     
     // After complete execution, the order should no longer exist
     assert_false(test_ladder.orderExists(1001), "Order should be removed after complete execution");

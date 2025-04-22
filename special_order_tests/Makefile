@@ -20,8 +20,8 @@ clean:
 	rm -f *.o $(TARGETS)
 
 run: all
-	./aon_tests
 	./iceberg_tests
+	./aon_tests
 	./combined_tests
 
 .PHONY: all clean run

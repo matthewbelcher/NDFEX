@@ -1,7 +1,3 @@
-#pragma once
-
-
-
 #include "../matching_engine/order_ladder.H"
 #include "mock_subscriber.cpp"
 
