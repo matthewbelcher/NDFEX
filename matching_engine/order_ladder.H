@@ -199,7 +199,8 @@ namespace ndfex {
         }   
 
         if (notify && !(flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC))) {
-            subscriber->onNewOrder(order_id, symbol, side, quantity, display_quantity, price, flags & ~static_cast<uint8_t>(oe::ORDER_FLAGS::ICEBERG));
+            flags = flags & ~static_cast<uint8_t>(oe::ORDER_FLAGS::ICEBERG);
+            subscriber->onNewOrder(order_id, symbol, side, quantity, display_quantity, price, flags);
         }
     }
 
