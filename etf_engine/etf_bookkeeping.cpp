@@ -92,6 +92,15 @@ uint32_t AllClients::get_stock_balance(const std::string& username, uint32_t sym
     }
     return 0;
 }
+std::unordered_map<uint32_t, uint32_t> AllClients::get_holdings(const std::string &username) {
+    auto it = Clients.find(username);
+    if (it != Clients.end()) {
+        return it->second.holdings;
+    } else {
+        return {}; // Empty map if user doesn't exist
+    }
+}
+
 // Counters
 void AllClients::record_creation(uint32_t amount) {
     total_undy_created += amount;
@@ -101,7 +110,7 @@ void AllClients::record_redemption(uint32_t amount) {
     total_undy_redeamed += amount;
     current_undy_out -= amount;
 }
-bool AllClients::create_etf(const std::string &username, const std::string &password, uint32_t amount) {
+bool AllClients::create_etf(const std::string &username, uint32_t amount) {
     //check to make sure we have all the underlyings
     ClientBook* client = get_client(username);
     if (!client) return false;
@@ -118,7 +127,7 @@ bool AllClients::create_etf(const std::string &username, const std::string &pass
     record_creation(amount);
     return true;
 }
-bool AllClients::redeem_etf(const std::string &username, const std::string &password, uint32_t amount){
+bool AllClients::redeem_etf(const std::string &username, uint32_t amount){
     ClientBook* client = get_client(username);
     if (!client) return false;
     if (client->holdings[8] < amount)

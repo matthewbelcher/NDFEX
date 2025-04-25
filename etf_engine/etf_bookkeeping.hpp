@@ -24,10 +24,11 @@ struct ClientBook {
 
 class AllClients {
     private:
-        //client username to ClientBook
-        std::unordered_map<std::string, ClientBook> Clients;
+        
     public:
         AllClients();
+        //client username to ClientBook
+        std::unordered_map<std::string, ClientBook> Clients;
         uint32_t total_undy_created = 0;
         uint32_t total_undy_redeamed = 0;
         uint32_t current_undy_out = 0;
@@ -44,8 +45,9 @@ class AllClients {
         bool debit_stock(const std::string& username, uint32_t symbol_id, uint32_t amount);
         uint32_t get_stock_balance(const std::string& username, uint32_t symbol_id);
         //creation/deletion
-        bool create_etf(const std::string &username, const std::string &password, uint32_t amount);
-        bool redeem_etf(const std::string &username, const std::string &password, uint32_t amount);
+        bool create_etf(const std::string &username, uint32_t amount);
+        std::unordered_map<u_int32_t, u_int32_t> get_holdings(const std::string &username);
+        bool redeem_etf(const std::string &username, uint32_t amount);
         // Counters
         void record_creation(uint32_t amount);
         void record_redemption(uint32_t amount);

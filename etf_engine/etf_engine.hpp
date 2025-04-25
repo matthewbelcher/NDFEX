@@ -1,33 +1,24 @@
-#pragma once
-#include "etf_bookkeeping.hpp"
-#include <thread>
+#ifndef ETF_ENGINE_HPP
+#define ETF_ENGINE_HPP
+
 #include <string>
-#include <mutex>
-#include <atomic>
 #include <iostream>
-#include <string>
-#include "../external/concurrentqueue/concurrentqueue.h"
-#include <pistache/http.h>
-#include <pistache/router.h>
+#include <map>
+#include <thread>
+#include "etf_bookkeeping.hpp"
 
-
+class HTTPServer;
 
 class ETFEngine {
     public:
-        ETFEngine(const std::string& data_file, int port = 9080);
-        void run();                   // Starts the REST server
+        ETFEngine(const std::string& data_file, int port);
+        ~ETFEngine();
+        AllClients clients;
+        void start_rest_listener();                   // Starts the REST server
         void shutdown();             // Clean shutdown
     private:
         void setup_routes();
         void load_clients_from_file(const std::string& filename);
-
-        //route handlers
-        void handle_create(const Pistache::Rest::Request &request, Pistache::Http::ResponseWriter response);
-        void handle_redeem(const Pistache::Rest::Request& request, Pistache::Http::ResponseWriter response);
-        AllClients clients;
-        std::shared_ptr<Pistache::Http::Endpoint> httpEndpoint;
-        Pistache::Rest::Router router;
-
-
-
+        HTTPServer * http_server_;
 }; 
+#endif
