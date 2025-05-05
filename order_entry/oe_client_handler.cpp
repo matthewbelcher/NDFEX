@@ -1,4 +1,5 @@
 #include "oe_client_handler.H"
+#include <iostream>
 
 namespace ndfex::oe {
 
@@ -16,6 +17,7 @@ ClientHandler::ClientHandler(
 void ClientHandler::on_login(int sock_fd, const login& msg) {
     logger->info("Received login request from client {} {}", msg.header.client_id, users.begin()->second.username);
     // validate username and password
+    //std::cout << "Received login request from client" << std::endl;
     auto it = users.find(std::string(reinterpret_cast<const char*>(msg.username)));
     if (it == users.end()
         || it->second.password != std::string(reinterpret_cast<const char*>(msg.password))
@@ -100,7 +102,7 @@ void ClientHandler::on_login(int sock_fd, const login& msg) {
     client_to_sock_fd[msg.header.client_id] = sock_fd;
 
     logger->info("Client {} logged in successfully with session id {}", msg.header.client_id, session_id);
-
+    std::cout << "Client logged in successfully" << std::endl;
     // send login response with status = 0
     login_response response;
     response.header.length = sizeof(login_response);
@@ -137,17 +139,22 @@ void ClientHandler::on_socket_closed(int sock_fd) {
 }
 
 void ClientHandler::on_new_order(int sock_fd, const new_order& msg) {
+    //std::cout << "on_new_order called!" << std::endl;
     logger->info("Received new order from client {}: order id: {} symbol: {} side: {} quantity: {} price: {} flags: {}",
                  msg.header.client_id, msg.order_id, msg.symbol, static_cast<uint8_t>(msg.side), msg.quantity, msg.price, msg.flags);
 
     if (!validate_session(sock_fd, msg.header.session_id, msg.header.client_id)) {
         logger->warn("Invalid session for new order from client {}", msg.header.client_id);
+        std::cout << "invalid session id" << std::endl;
         send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(REJECT_REASON::UNKNOWN_SESSION_ID), msg.order_id);
         return;
     }
 
-    auto reject = validator.validate_new_order(msg.order_id, msg.symbol, msg.side, msg.quantity, msg.price, msg.flags, msg.display_quantity);
+    //std::cout << "msg.flags" << msg.flags << std::endl;
+    //std::cout << "msg.price" << msg.price << std::endl;
+    auto reject = validator.validate_new_order(msg.order_id, msg.symbol, msg.side, msg.quantity, msg.display_quantity, msg.price, msg.flags);
     if (reject != REJECT_REASON::NONE) {
+        std::cout << "order not validated" << std::endl;
         send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(reject), msg.order_id);
         return;
     }
@@ -157,6 +164,7 @@ void ClientHandler::on_new_order(int sock_fd, const new_order& msg) {
         logger->warn("Duplicate order id for new order from client {}", msg.header.client_id);
         send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(REJECT_REASON::DUPLICATE_ORDER_ID),
                           msg.order_id);
+        //std::cout << "dup order id" << std::endl;
         return;
     }
 
@@ -165,6 +173,7 @@ void ClientHandler::on_new_order(int sock_fd, const new_order& msg) {
     exch_to_client_orders[exch_order_id] = {msg.header.client_id, msg.order_id};
 
     logger->info("Client order id {} mapped to exch order id {}", msg.order_id, exch_order_id);
+    //std::cout << "Matching engine called" << std::endl;
     to_matching_engine.emplace(MSG_TYPE::NEW_ORDER, exch_order_id, msg.symbol, msg.header.seq_num, msg.header.client_id,
         msg.side, msg.quantity, msg.price, msg.flags);
 }
@@ -207,7 +216,7 @@ void ClientHandler::on_modify_order(int sock_fd, const modify_order& msg) {
     }
 
     auto client_order = client_to_open_orders.at(msg.header.client_id).at(msg.order_id);
-    auto reject = validator.validate_new_order(msg.order_id, client_order.symbol, msg.side, msg.quantity, msg.price, 0);
+    auto reject = validator.validate_new_order(msg.order_id, client_order.symbol, msg.side, msg.quantity, 0, msg.price, 0);
     if (reject != REJECT_REASON::NONE) {
         send_order_reject(sock_fd, msg.header.seq_num, msg.header.client_id, static_cast<uint8_t>(reject), msg.order_id);
         return;

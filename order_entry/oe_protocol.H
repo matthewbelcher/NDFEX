@@ -108,10 +108,10 @@ struct new_order {
     uint32_t symbol;
     md::SIDE side;
     uint32_t quantity;
+    uint32_t display_quantity;
     int32_t price;
     uint8_t flags;
-    // For iceberg orders
-    uint32_t display_quantity; 
+ 
 } __attribute__((packed));
 
 struct delete_order {

@@ -100,7 +100,7 @@ public:
     
     void onFill(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) {
         fill_count++;
-        // std::cout << "Fill count: " << fill_count << std::endl;
+        //std::cout << "Fill id: " << order_id << std::endl;
         fills.push_back({order_id, symbol, side, quantity, price, flags});
     }
     
@@ -117,7 +117,7 @@ public:
         uint32_t total = 0;
         for (const auto& fill : fills) {
             if (fill.order_id == order_id) {
-                // std::cout << "Fill qty: " << fill.quantity << std::endl;
+                //std::cout << "Fill id here " << fill.order_id << " Fill qty "<< fill.quantity << std::endl;
                 total += fill.quantity;
             }
         }
