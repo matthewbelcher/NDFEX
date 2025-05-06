@@ -38,10 +38,10 @@ public:
         symbol_to_matching_engine[symbol] = new OrderLadder<MatchingEngineBroker>(this, symbol);
     }
 
-    void onNewOrder(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) {
+    void onNewOrder(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, uint32_t display_quantity, int32_t price, uint8_t flags) {
         if (quantity > 0) {
             // don't publish a new order if it was fully filled in the matching engine or it was an IOC
-            publisher.publish_new_order(order_id, symbol, side, quantity, price, flags);
+            publisher.publish_new_order(order_id, symbol, side, display_quantity, price, flags);
             last_published_ts = nanotime();
         }
 

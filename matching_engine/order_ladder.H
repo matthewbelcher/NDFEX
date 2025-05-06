@@ -6,8 +6,8 @@
 #include <stdexcept>
 #include <iostream>
 
-#include "market_data/md_protocol.H"
-#include "order_entry/oe_protocol.H"
+#include "../market_data/md_protocol.H"
+#include "../order_entry/oe_protocol.H"
 #include "exceptions.H"
 
 namespace ndfex {
@@ -21,8 +21,11 @@ namespace ndfex {
         public:
             uint64_t order_id;
             uint64_t timestamp;
-            uint32_t quantity;
+            uint32_t quantity; // current visible quantity **
             uint32_t filled_quantity;
+            // Updated for iceberg orders
+            uint32_t total_quantity; // total order size
+            uint32_t display_quantity; // displayed quantity for iceberg orders
             int32_t price;
             md::SIDE side;
             uint8_t flags;
@@ -55,7 +58,7 @@ namespace ndfex {
         ~OrderLadder() = default;
 
         template <bool notify = true>
-        void new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, uint32_t filled_quantity = 0);
+        void new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, uint32_t filled_quantity = 0, uint32_t display_quantity = 0);
 
         template <bool notify = true>
         void delete_order(uint64_t order_id);
@@ -65,12 +68,12 @@ namespace ndfex {
     private:
 
         template <typename PriceLevels>
-        void match(uint64_t order_id, md::SIDE side, uint32_t& quantity, int32_t price,
+        void match(uint64_t order_id, md::SIDE side, uint32_t& quantity, int32_t price, uint8_t flags,
                    PriceLevels& opposite_side_price_levels);
 
         template <typename PriceLevels>
         void handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, PriceLevels& price_levels,
-                              bool notify, uint32_t filled_quantity);
+                              bool notify, uint32_t filled_quantity, uint32_t display_quantity);
 
         template <typename PriceLevels>
         void handle_delete_order(uint64_t order_id, PriceLevels& price_levels);
@@ -79,121 +82,174 @@ namespace ndfex {
     template <typename Subscriber>
     template <bool notify>
     void OrderLadder<Subscriber>::new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags,
-                                            uint32_t filled_quantity) {
+                                            uint32_t filled_quantity, uint32_t display_quantity) {
         if (side == md::SIDE::BUY) {
-            handle_new_order(order_id, side, quantity, price, flags, buy_levels, notify, filled_quantity);
+            handle_new_order(order_id, side, quantity, price, flags, buy_levels, notify, filled_quantity, display_quantity);
         } else {
-            handle_new_order(order_id, side, quantity, price, flags, sell_levels, notify, filled_quantity);
+            handle_new_order(order_id, side, quantity, price, flags, sell_levels, notify, filled_quantity, display_quantity);
         }
     }
 
     template <typename Subscriber>
     template <typename PriceLevels>
     void OrderLadder<Subscriber>::handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags,
-                                                   PriceLevels& price_levels, bool notify, uint32_t filled_quantity) {
+                                                   PriceLevels& price_levels, bool notify, uint32_t filled_quantity, uint32_t display_quantity) {
+        //std::cout << "Order received!" << std::endl;
+        //std::cout << " Price=" << price << " Quantity=" << quantity << std::endl;
+        
         if (quantity > filled_quantity) {
             quantity = quantity - filled_quantity;
         } else {
             throw std::runtime_error("filled quantity > quantity on new order!");
         }
-
+    
         uint32_t prematch_quantity = quantity;
         if (side == md::SIDE::BUY) {
-            match(order_id, side, quantity, price, sell_levels);
+            match(order_id, side, quantity, price, flags, sell_levels);
         } else {
-            match(order_id, side, quantity, price, buy_levels);
+            match(order_id, side, quantity, price, flags, buy_levels);
         }
-
-        if (notify && !(flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC))) {
-            subscriber->onNewOrder(order_id, symbol, side, quantity, price, flags);
-        }
-
+    
         // IOC orders are not added to the ladder
         if (quantity > 0 && (flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC))) {
             if (notify) {
-                // still need to notify sender that it was closed
+                if (!(flags & static_cast<uint8_t>(oe::ORDER_FLAGS::AON))) {
                 subscriber->onDeleteOrder(order_id, false);
+                }
+                // still need to notify sender that it was closed
+                
             }
             return;
         }
-
+    
         if (quantity == 0) {
             // order is fully matched, still notify subscriber but do not add to the ladder
             return;
         }
-
+    
         if (orders.find(order_id) != orders.end()) {
             // order already exists
             throw std::runtime_error("Order already exists");
         }
-
+    
         if (quantity > prematch_quantity) {
             throw std::runtime_error("Impossible");
         }
-
-        // create new order
-        Order& order = orders[order_id]; // create new order
-        order.order_id = order_id;
-        order.timestamp = 0;
-        order.quantity = quantity;
-        order.filled_quantity = prematch_quantity - quantity;
-        order.price = price;
-        order.side = side;
-        order.flags = flags;
-        order.next = nullptr;
-        order.prev = nullptr;
-
-        auto it = price_levels.find(price);
-        if (it == price_levels.end()) {
-            // insert order into the ladder
-            price_levels.insert({price, {&order, &order}});
-
-        } else {
-            // add order to the end of the list
-            if (it->second.tail == nullptr) {
-                throw std::runtime_error("Price level " + std::to_string(price) + " tail is nullptr");
+    
+        bool is_iceberg = flags & static_cast<uint8_t>(oe::ORDER_FLAGS::ICEBERG);
+        
+        if (is_iceberg) {
+            // Create new order
+            Order& order = orders[order_id];
+            order.order_id = order_id;
+            order.timestamp = 0;
+            order.quantity = quantity;
+            order.display_quantity = std::min(quantity, display_quantity); // Show only display quantity
+            order.filled_quantity = prematch_quantity - quantity;
+            order.price = price;
+            order.side = side;
+            order.flags = flags; // Keep original flags
+            order.next = nullptr;
+            order.prev = nullptr;
+    
+            auto it = price_levels.find(price);
+            if (it == price_levels.end() || it->second.head == nullptr || it->second.tail == nullptr) {
+                // Either price level doesn't exist or it's empty - create a new one
+                price_levels[price] = {&order, &order};
+                //std::cout << "ICEBERG order inserted in ladder" << std::endl;
+            } else {
+                // Add order to the end of the list
+                it->second.tail->next = &orders[order_id];
+                orders[order_id].prev = it->second.tail;
+                it->second.tail = &orders[order_id];
             }
-
-            it->second.tail->next = &orders[order_id];
-            orders[order_id].prev = it->second.tail;
-            it->second.tail = &orders[order_id];
+        }
+        else {
+            // Create new order
+            Order& order = orders[order_id];
+            order.order_id = order_id;
+            order.timestamp = 0;
+            order.quantity = quantity;
+            order.display_quantity = quantity;
+            order.filled_quantity = prematch_quantity - quantity;
+            order.price = price;
+            order.side = side;
+            order.flags = flags;
+            order.next = nullptr;
+            order.prev = nullptr;
+            
+            auto it = price_levels.find(price);
+            if (it == price_levels.end() || it->second.head == nullptr || it->second.tail == nullptr) {
+                // Either price level doesn't exist or it's empty - create a new one
+                price_levels[price] = {&order, &order};
+                /*if (flags & static_cast<uint8_t>(oe::ORDER_FLAGS::AON)) {
+                    //std::cout << "AON order inserted in ladder" << std::endl;
+                }
+                else {
+                    //std::cout << "Regular order inserted in ladder" << std::endl;
+                }*/
+            } else {
+                // Add order to the end of the list
+                it->second.tail->next = &orders[order_id];
+                orders[order_id].prev = it->second.tail;
+                it->second.tail = &orders[order_id];
+            }
+        }   
+    
+        if (notify && !(flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC))) {
+            uint8_t subscriber_flags = flags;
+            
+            // Remove ICEBERG flag only for subscriber notification
+            subscriber_flags = subscriber_flags & ~static_cast<uint8_t>(oe::ORDER_FLAGS::ICEBERG);
+            
+            // For iceberg orders, only notify with the display quantity for visible portion
+            uint32_t visible_qty = (is_iceberg) ? display_quantity : quantity;
+            
+            subscriber->onNewOrder(order_id, symbol, side, visible_qty, display_quantity, price, subscriber_flags);
         }
     }
 
     template <typename Subscriber>
     template <typename PriceLevels>
-    void OrderLadder<Subscriber>::handle_delete_order(uint64_t order_id, PriceLevels& price_levels) {
-        auto it = orders.find(order_id);
-        if (it == orders.end()) {
-            subscriber->onCancelReject(order_id);
-            return;
-        }
-
-        if (price_levels.find(it->second.price) == price_levels.end()) {
-            throw std::runtime_error("Price level " + std::to_string(it->second.price) + " for this order "
-                + std::to_string(order_id) + " does not exist");
-        }
-
-        PriceLevel& price_level = price_levels[it->second.price];
-        Order& order = it->second;
-        if (price_level.head == &order) {
-            price_level.head = order.next;
-        }
-
-        if (price_level.tail == &order) {
-            price_level.tail = order.prev;
-        }
-
-        if (order.prev) {
-            order.prev->next = order.next;
-        }
-
-        if (order.next) {
-            order.next->prev = order.prev;
-        }
-
-        orders.erase(order_id);
+void OrderLadder<Subscriber>::handle_delete_order(uint64_t order_id, PriceLevels& price_levels) {
+    auto it = orders.find(order_id);
+    if (it == orders.end()) {
+        subscriber->onCancelReject(order_id);
+        return;
     }
+
+    if (price_levels.find(it->second.price) == price_levels.end()) {
+        throw std::runtime_error("Price level " + std::to_string(it->second.price) + " for this order "
+            + std::to_string(order_id) + " does not exist");
+    }
+
+    int32_t price = it->second.price;
+    PriceLevel& price_level = price_levels[price];
+    Order& order = it->second;
+    
+    if (price_level.head == &order) {
+        price_level.head = order.next;
+    }
+
+    if (price_level.tail == &order) {
+        price_level.tail = order.prev;
+    }
+
+    if (order.prev) {
+        order.prev->next = order.next;
+    }
+
+    if (order.next) {
+        order.next->prev = order.prev;
+    }
+
+    orders.erase(order_id);
+    
+    // Check if price level is now empty and remove it if so
+    if (price_level.head == nullptr && price_level.tail == nullptr) {
+        price_levels.erase(price);
+    }
+}
 
     template <typename Subscriber>
     template <bool notify>
@@ -203,20 +259,16 @@ namespace ndfex {
             subscriber->onCancelReject(order_id);
             return;
         }
-
-        int32_t price = it->second.price;
+    
+        //int32_t price = it->second.price;
         if (it->second.side == md::SIDE::BUY) {
             handle_delete_order(order_id, buy_levels);
-            if (buy_levels.find(price) != buy_levels.end() && buy_levels[price].head == nullptr) {
-                buy_levels.erase(price);
-            }
+            // No need to check and erase again since we do it in handle_delete_order
         } else {
             handle_delete_order(order_id, sell_levels);
-            if (sell_levels.find(price) != sell_levels.end() && sell_levels[price].head == nullptr) {
-                sell_levels.erase(price);
-            }
+            // No need to check and erase again since we do it in handle_delete_order
         }
-
+    
         if (notify) {
             subscriber->onDeleteOrder(order_id);
         }
@@ -247,58 +299,160 @@ namespace ndfex {
 
         subscriber->onModifyOrder(order_id, symbol, side, quantity - it->second.filled_quantity, price);
     }
-
     template <typename Subscriber>
-    template <typename PriceLevels>
-    void OrderLadder<Subscriber>::match(uint64_t incoming_order_id, md::SIDE side, uint32_t& quantity, int32_t price,
-                                        PriceLevels& opposite_side_price_levels) {
-        // check if there are any orders on the opposite side at the same or better price level
-        auto it = opposite_side_price_levels.begin();
-        while (it != opposite_side_price_levels.end() && quantity > 0) {
-            if ((side == md::SIDE::BUY && it->first > price) || (side == md::SIDE::SELL && it->first < price)) {
+template <typename PriceLevels>
+void OrderLadder<Subscriber>::match(uint64_t incoming_order_id, md::SIDE side, uint32_t& quantity, int32_t price, uint8_t flags,
+                                  PriceLevels& opposite_side_price_levels) {
+    // AON match logic                                   
+    if (flags & static_cast<uint8_t>(oe::ORDER_FLAGS::AON)) {
+        uint32_t available_liquidity = 0;
+        auto it_check = opposite_side_price_levels.begin();
+
+        while (it_check != opposite_side_price_levels.end()) {
+            if ((side == md::SIDE::BUY && it_check->first > price) || 
+                (side == md::SIDE::SELL && it_check->first < price)) {
                 break;
             }
 
-            PriceLevel& price_level = it->second;
+            PriceLevel& price_level = it_check->second;
             Order* order = price_level.head;
-            while (order && quantity > 0) {
-                if (order->quantity <= quantity) {
-                    // order is fully matched
-                    subscriber->onTrade(order->order_id, order->quantity, order->price);
-                    subscriber->onFill(order->order_id, symbol, order->side, order->quantity, order->price,
-                     static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED));
-
-                    quantity -= order->quantity;
-
-                    subscriber->onFill(incoming_order_id, symbol, side, order->quantity, order->price,
-                                       static_cast<uint8_t>(quantity > 0 ? oe::FILL_FLAGS::PARTIAL_FILL : oe::FILL_FLAGS::CLOSED));
-
-                    auto to_delete = order;
-                    order = order->next;
-                    handle_delete_order(to_delete->order_id, opposite_side_price_levels);
-                } else {
-                    // order is partially matched
-                    subscriber->onTrade(order->order_id, quantity, order->price);
-                    subscriber->onFill(order->order_id, symbol, order->side, quantity, order->price,
-                                       static_cast<uint8_t>(oe::FILL_FLAGS::PARTIAL_FILL));
-                    subscriber->onFill(incoming_order_id, symbol, side, quantity, order->price,
-                                       static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED));
-
-                    order->filled_quantity = quantity;
-                    order->quantity -= quantity;
-                    quantity = 0;
-                    return;
-                }
+        
+            while (order) {
+                available_liquidity += order->quantity;
+                order = order->next;
             }
+        
+            ++it_check;
+        }
 
-            if (price_level.head == nullptr) {
-                it = opposite_side_price_levels.erase(it);
-            } else if (quantity > 0) {
-                // if this price level is not empty, but we still had quantity left, we should have fully matched
-                throw std::runtime_error("Price level " + std::to_string(it->first) +
-                " not empty but no orders? Impossible. Remaining quantity: " + std::to_string(quantity));
+        if (available_liquidity < quantity) {
+            if (flags & static_cast<uint8_t>(oe::ORDER_FLAGS::IOC)) {
+                subscriber->onDeleteOrder(incoming_order_id, false);
             }
+            return;
         }
     }
-
+    
+    // Process matching orders
+    while (quantity > 0) {
+        // Find the best price level that matches
+        auto it = opposite_side_price_levels.begin();
+        
+        // Check if we've run out of price levels or reached an invalid price
+        if (it == opposite_side_price_levels.end() || 
+            (side == md::SIDE::BUY && it->first > price) || 
+            (side == md::SIDE::SELL && it->first < price)) {
+            break;
+        }
+        
+        PriceLevel& price_level = it->second;
+        
+        // Skip empty price levels
+        if (price_level.head == nullptr) {
+            it = opposite_side_price_levels.erase(it);
+            continue;
+        }
+        
+        // Get the first order at this price level
+        Order* order = price_level.head;
+        bool is_iceberg = order->flags & static_cast<uint8_t>(oe::ORDER_FLAGS::ICEBERG);
+        
+        // Determine the matchable quantity
+        uint32_t matchable_qty = is_iceberg ? order->display_quantity : order->quantity;
+        
+        if (is_iceberg) {
+            // std::cout << "DEBUG: Iceberg order " << order->order_id 
+            //           << " - display qty: " << matchable_qty 
+            //           << ", total remaining: " << order->quantity 
+            //           << ", flags: " << static_cast<int>(order->flags) << std::endl;
+        }
+        
+        // Record all necessary information before modifying the order
+        uint64_t order_id = order->order_id;
+        int32_t order_price = order->price;
+        md::SIDE order_side = order->side;
+        uint32_t filled_quantity = order->filled_quantity;
+        uint32_t total_quantity = order->quantity;
+        uint32_t display_size = is_iceberg ? order->display_quantity : 0;
+        uint8_t order_flags = order->flags;
+        
+        if (quantity >= matchable_qty) {
+            // We can match the entire visible portion
+            
+            // Create trade and fill notifications
+            subscriber->onTrade(order_id, matchable_qty, order_price);
+            subscriber->onFill(order_id, symbol, order_side, matchable_qty, order_price,
+                              static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED));
+            
+            // Reduce remaining quantity
+            quantity -= matchable_qty;
+            
+            // Notify about the incoming order fill
+            subscriber->onFill(incoming_order_id, symbol, side, matchable_qty, order_price,
+                              static_cast<uint8_t>(quantity > 0 ? oe::FILL_FLAGS::PARTIAL_FILL : oe::FILL_FLAGS::CLOSED));
+            
+            // Remove the order from the book
+            handle_delete_order(order_id, opposite_side_price_levels);
+            
+            if (is_iceberg) {
+                // For iceberg orders, check if there's quantity remaining after this fill
+                uint32_t new_filled = filled_quantity + matchable_qty;
+                uint32_t remaining = total_quantity - matchable_qty;
+                
+                if (remaining > 0) {
+                    // There's still quantity remaining - we need to refresh
+                    // std::cout << "DEBUG: Refreshing iceberg order " << order_id 
+                    //           << " - remaining total: " << remaining 
+                    //           << ", new display qty: " << std::min(remaining, display_size) << std::endl;
+                    
+                    // Re-add the order with updated quantities
+                    new_order<true>(order_id, order_side, remaining, order_price, 
+                                  order_flags, new_filled, display_size);
+                } else {
+                    // No remaining quantity
+                    subscriber->onDeleteOrder(order_id, false);
+                }
+            } else {
+                // For regular orders, just notify about deletion
+                subscriber->onDeleteOrder(order_id, false);
+            }
+        } else {
+            // We can only match part of the visible quantity
+            subscriber->onTrade(order_id, quantity, order_price);
+            subscriber->onFill(order_id, symbol, order_side, quantity, order_price,
+                              static_cast<uint8_t>(oe::FILL_FLAGS::PARTIAL_FILL));
+            subscriber->onFill(incoming_order_id, symbol, side, quantity, order_price,
+                              static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED));
+            
+            // std::cout << "DEBUG: Partial match for order " << order_id 
+            //           << " - filled: " << quantity << std::endl;
+            
+            // Update the order quantities
+            if (is_iceberg) {
+                // Find the order again (it might have moved in memory due to unordered_map operations)
+                auto order_it = orders.find(order_id);
+                if (order_it != orders.end()) {
+                    order_it->second.display_quantity -= quantity;
+                    order_it->second.quantity -= quantity;
+                    order_it->second.filled_quantity += quantity;
+                    
+                    // std::cout << "DEBUG: Iceberg after partial fill - display qty: " 
+                    //           << order_it->second.display_quantity 
+                    //           << ", total remaining: " << order_it->second.quantity << std::endl;
+                }
+            } else {
+                // Find the order again
+                auto order_it = orders.find(order_id);
+                if (order_it != orders.end()) {
+                    order_it->second.quantity -= quantity;
+                    order_it->second.filled_quantity += quantity;
+                }
+            }
+            
+            // No more quantity to match
+            quantity = 0;
+            return;
+        }
+    }
+}
 }  // namespace ndfex

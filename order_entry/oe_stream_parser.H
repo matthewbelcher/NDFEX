@@ -67,6 +67,11 @@ public:
             switch (header->msg_type) {
                 case static_cast<uint8_t>(MSG_TYPE::NEW_ORDER): {
                     new_order* msg = reinterpret_cast<new_order*>(partial_message.data());
+                    //std::cout << "in stream parser: msg.display qty" << msg->display_quantity << std::endl;
+                    //std::cout << "msg->qty" << msg->quantity << std::endl;
+                    //std::cout << "msg->flags" << msg->flags << std::endl;
+                    //std::cout << "New order parsed!" << std::endl;
+                    //std::cout << " Price=" << msg->price << " Quantity=" << msg->quantity << " Side" << msg->side << std::endl;
                     handler.on_new_order(sock_fd, *msg);
                     break;
                 }

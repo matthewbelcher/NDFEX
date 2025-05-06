@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
     async_file->flush();
 
     // create market data publisher
-    MarketDataPublisher publisher(mcast_ip, 12345, bind_ip, async_file);
+    MarketDataPublisher publisher(mcast_ip, 12340, bind_ip, async_file);
 
     // create broker queues
     SPSCOEQueue to_client(1000);
@@ -101,7 +101,7 @@ int main(int argc, char** argv) {
     oe::OrderEntryValidator validator(symbols_map, async_file);
     oe::ClientHandler client_handler(validator, from_client, to_client, users, async_file);
 
-    oe::EpollServer<oe::ClientHandler> oe_server(client_handler, 1234, async_file);
+    oe::EpollServer<oe::ClientHandler> oe_server(client_handler, 4321, async_file);
 
     std::atomic<bool> running = true;
     std::thread t([&broker, async_file, &running]() {
