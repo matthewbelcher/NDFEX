@@ -14,8 +14,11 @@ STABLE_SRC = stable_bot_runner.cpp oe_client.cpp md_client.cpp order_book.cpp co
 STABLE_OBJ = $(STABLE_SRC:.cpp=.o)
 STABLE_TARGET = out/stable_bot_runner
 
+NEWS_SRC = news_bot_runner.cpp oe_client.cpp md_client.cpp order_book.cpp random_walk_fair_value.cpp fair_value_mm.cpp ../matching_engine/utils.cpp random_taker.cpp news_trader.cpp
+NEWS_OBJ = $(NEWS_SRC:.cpp=.o)
+NEWS_TARGET = out/news_bot_runner
 
-all: release print_snapshots stable_bot_runner
+all: release print_snapshots stable_bot_runner news_bot_runner
 
 release: CXXFLAGS += -O3
 release: $(TARGET)
@@ -39,15 +42,21 @@ $(STABLE_TARGET): $(STABLE_OBJ)
 	mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -O3 -o $@ $^ $(LDFLAGS)
 
+$(NEWS_TARGET): $(NEWS_OBJ)
+	mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -O3 -o $@ $^ $(LDFLAGS)
+
 print_snapshots: $(PRINT_SNAPSHOTS_TARGET)
 
 stable_bot_runner: $(STABLE_TARGET)
+
+news_bot_runner: $(NEWS_TARGET)
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJ) $(TARGET) $(TARGET)_debug $(PRINT_SNAPSHOTS_OBJ) $(PRINT_SNAPSHOTS_TARGET) $(STABLE_OBJ) $(STABLE_TARGET)
+	rm -f $(OBJ) $(TARGET) $(TARGET)_debug $(PRINT_SNAPSHOTS_OBJ) $(PRINT_SNAPSHOTS_TARGET) $(STABLE_OBJ) $(STABLE_TARGET) $(NEWS_OBJ) $(NEWS_TARGET)
 	rm -rf out/
 
-.PHONY: all clean release debug print_snapshots stable_bot_runner
+.PHONY: all clean release debug print_snapshots stable_bot_runner news_bot_runner
