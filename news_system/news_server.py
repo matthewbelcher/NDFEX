@@ -2,8 +2,10 @@ import time
 import threading
 import json
 import os
+import random
 from datetime import datetime
 from headline_generator import HeadlineGenerator
+from nlp_sentiment_analyzer import NLPSentimentAnalyzer
 
 class NewsServer:
     def __init__(self, api_key, symbols=None, headline_interval=60, output_dir="./headlines"):
@@ -15,11 +17,15 @@ class NewsServer:
             output_dir: Directory to store headline files
         """
         self.generator = HeadlineGenerator(api_key, symbols)
+        self.analyzer = NLPSentimentAnalyzer(api_key)
         self.headline_interval = headline_interval
         self.subscribers = []
         self.running = False
         self.thread = None
         self.headlines = []
+        
+        # Randomize intervals slightly to make it more realistic
+        self.interval_variation = 0.2  # ±20% variation in timing
         
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
@@ -60,8 +66,59 @@ class NewsServer:
         """Main loop for generating headlines"""
         while self.running:
             try:
-                # Generate a headline
-                headline = self.generator.generate_headline()
+                # Determine news category - sometimes generate random headlines
+                # to create market noise
+                if random.random() < 0.25:  # 25% of headlines are random "noise"
+                    category = random.choice(self.generator.news_categories)
+                    print(f"Generating random market noise headline in category: {category}")
+                else:
+                    # Add weight to more impactful categories
+                    weighted_categories = (
+                        ["earnings", "costs", "demand", "supply"] * 3 +  # 3x weight for fundamental factors
+                        ["regulation", "management", "partnership"] * 2 +  # 2x weight for business factors
+                        ["product", "competition", "market_share", "international", "innovation", "research"] * 1  # 1x weight for other factors
+                    )
+                    category = random.choice(weighted_categories)
+                    print(f"Generating impactful headline in category: {category}")
+                
+                # Generate headline with authentic sentiment
+                raw_headline = self.generator.generate_headline(category=category)
+                
+                # Run headline through NLP sentiment analyzer for a more nuanced analysis
+                print(f"Analyzing headline sentiment with NLP...")
+                nlp_analysis = self.analyzer.analyze(
+                    raw_headline["headline"], 
+                    raw_headline["symbol"],
+                    use_llm=True  # Set to True to use OpenAI API
+                )
+                
+                # Get sentiment score from NLP analysis
+                nlp_sentiment_score = nlp_analysis["sentiment_score"]
+                confidence = nlp_analysis["confidence"]
+                
+                # Modify the impact based on NLP analysis and confidence
+                # This allows for headlines where the impact doesn't match the original intention
+                raw_impact = raw_headline["impact"]
+                if abs(nlp_sentiment_score) > 0.3:  # Only adjust if NLP has a strong opinion
+                    if (nlp_sentiment_score > 0 and raw_impact < 0) or (nlp_sentiment_score < 0 and raw_impact > 0):
+                        # NLP disagrees with original sentiment - adjust impact
+                        adjusted_impact = int(nlp_sentiment_score * 10 * confidence)
+                        print(f"NLP disagrees with original sentiment. Adjusting impact from {raw_impact} to {adjusted_impact}")
+                        raw_headline["impact"] = adjusted_impact
+                
+                # Add NLP analysis data to headline
+                headline = raw_headline.copy()
+                headline["nlp_analysis"] = {
+                    "sentiment_score": nlp_sentiment_score,
+                    "confidence": confidence,
+                    "method": nlp_analysis["method"]
+                }
+                
+                # Add original vs analyzed sentiment comparison
+                headline["original_sentiment"] = raw_headline["sentiment"]
+                headline["analyzed_sentiment_score"] = nlp_sentiment_score
+                
+                # Add headline to history
                 self.headlines.append(headline)
                 
                 # Log to files
@@ -81,18 +138,35 @@ class NewsServer:
             except Exception as e:
                 print(f"ERROR generating headline: {e}")
                 
+            # Add some randomness to the interval to make it more realistic
+            variation = random.uniform(
+                1.0 - self.interval_variation, 
+                1.0 + self.interval_variation
+            )
+            wait_time = self.headline_interval * variation
+            
             # Wait for next interval
-            print(f"Waiting {self.headline_interval} seconds until next headline...")
-            time.sleep(self.headline_interval)
+            print(f"Waiting {wait_time:.1f} seconds until next headline...")
+            time.sleep(wait_time)
     
     def _print_headline(self, headline):
         """Print a headline with fancy formatting"""
-        sentiment = "POSITIVE" if headline['sentiment'] > 0 else "NEGATIVE"
+        nlp_score = headline.get("analyzed_sentiment_score", 0)
+        original_sentiment = "POSITIVE" if headline['sentiment'] > 0 else "NEGATIVE"
+        analyzed_sentiment = "POSITIVE" if nlp_score > 0 else "NEGATIVE"
         impact = headline['impact']
+        category = headline.get('category', 'general')
+        
+        # Format confidence if available
+        confidence_str = ""
+        if "nlp_analysis" in headline and "confidence" in headline["nlp_analysis"]:
+            confidence = headline["nlp_analysis"]["confidence"]
+            confidence_str = f" (confidence: {confidence:.2f})"
         
         print("\n")
         print("=" * 80)
-        print(f"NEWS ALERT - {headline['symbol']} - IMPACT: {impact} - SENTIMENT: {sentiment}")
+        print(f"NEWS ALERT - {headline['symbol']} - CATEGORY: {category.upper()} - IMPACT: {impact}")
+        print(f"ORIGINAL SENTIMENT: {original_sentiment} | ANALYZED SENTIMENT: {analyzed_sentiment}{confidence_str}")
         print("-" * 80)
         print(f"{headline['headline']}")
         print("=" * 80)
