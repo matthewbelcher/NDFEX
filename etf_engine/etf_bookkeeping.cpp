@@ -12,7 +12,7 @@ AllClients::AllClients() : total_undy_created(0), total_undy_redeamed(0), curren
 }
 bool AllClients::authenticate(const std::string& username, const std::string& password) const {
     auto it = Clients.find(username);
-    if (it == Clients.end() || (it->second.username == username && it->second.password != password))
+    if (it == Clients.end() || it->second.password != password)
         return false;
     return true;
 }
@@ -114,14 +114,14 @@ bool AllClients::create_etf(const std::string &username, uint32_t amount) {
     //check to make sure we have all the underlyings
     ClientBook* client = get_client(username);
     if (!client) return false;
-    for (auto it = client->holdings.begin(); it->first != 8; ++it) {
-        if (it->second < amount) {
-            return false;
-        }
+    for (const auto& [symbol, this_amount] : client->holdings) {
+        if (symbol == 8) continue;
+        if (this_amount < amount) return false;
     }
     //remove holdings, add etf
-    for (auto it = client->holdings.begin(); it->first != 8; ++it) {
-        debit_stock(username, it->first, amount);
+    for (const auto& [symbol, _] : client->holdings) {
+        if (symbol == 8) continue;
+        debit_stock(username, symbol, amount);
     }
     credit_etf(username, amount);
     record_creation(amount);
@@ -132,9 +132,9 @@ bool AllClients::redeem_etf(const std::string &username, uint32_t amount){
     if (!client) return false;
     if (client->holdings[8] < amount)
         return false;
-    for (auto it = client->holdings.begin(); it->first != 8; ++it) {
-
-        credit_stock(username, it->first, amount);
+    for (const auto& [symbol, _] : client->holdings) {
+        if (symbol == 8) continue;
+        credit_stock(username, symbol, amount);
     }
     debit_etf(username, amount);
     record_redemption(amount);
