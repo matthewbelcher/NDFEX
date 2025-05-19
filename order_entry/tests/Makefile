@@ -1,4 +1,4 @@
-CXX = g++
+CXX = clang++
 CXXFLAGS = -std=c++17 -Wall -Werror -I../../matching_engine -I../../spdlog/include -I../ -I/usr/local/include -I../../ -I../../SPSCQueue
 LDFLAGS = -L/usr/local/lib -lgtest -lgtest_main -pthread
 

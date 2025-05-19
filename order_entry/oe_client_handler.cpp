@@ -14,7 +14,9 @@ ClientHandler::ClientHandler(
       logger(logger) {}
 
 void ClientHandler::on_login(int sock_fd, const login& msg) {
-    logger->info("Received login request from client {} {}", msg.header.client_id, users.begin()->second.username);
+    logger->info("Received login request from client {} {}", msg.header.client_id,
+                 std::string(reinterpret_cast<const char*>(msg.username)));
+
     // validate username and password
     auto it = users.find(std::string(reinterpret_cast<const char*>(msg.username)));
     if (it == users.end()
@@ -51,6 +53,18 @@ void ClientHandler::on_login(int sock_fd, const login& msg) {
     // check if this client id is already logged in
     if (client_to_sock_fd.find(msg.header.client_id) != client_to_sock_fd.end()) {
         auto other_fd = client_to_sock_fd[msg.header.client_id];
+        if (other_fd == sock_fd) {
+            logger->warn("Client {} already logged in", msg.header.client_id);
+            return;
+        }
+
+        if (sock_to_session_info.find(other_fd) == sock_to_session_info.end()) {
+            logger->error("Client {} not found in session info", other_fd);
+            shutdown(sock_fd, SHUT_RDWR);
+            close(sock_fd);
+            return;
+        }
+
         auto session = sock_to_session_info[other_fd];
 
         logger->warn("Duplicate login attempt from client {}", msg.header.client_id);
@@ -91,6 +105,8 @@ void ClientHandler::on_login(int sock_fd, const login& msg) {
         // close the other socket
         shutdown(other_fd, SHUT_RDWR);
         close(other_fd);
+
+        client_to_sock_fd.erase(msg.header.client_id);
         return;
     }
 
@@ -126,6 +142,11 @@ void ClientHandler::on_socket_closed(int sock_fd) {
     // clear client session info
     logger->info("ClientHandler: socket {} closed", sock_fd);
     logger->flush();
+
+    if (sock_to_session_info.find(sock_fd) == sock_to_session_info.end()) {
+        logger->warn("ClientHandler: socket {} not found in session info", sock_fd);
+        return;
+    }
 
     cancel_all_client_orders(sock_to_session_info[sock_fd].client_id);
 
@@ -233,7 +254,7 @@ void ClientHandler::process() {
         if (payload.msg_type == MSG_TYPE::REJECT) {
             int sock_fd = get_sock_fd(payload.client_id);
             if (sock_fd == -1) {
-                logger->warn("Client {} not found for reject", payload.client_id);
+                logger->warn("Client {} not found for reject", static_cast<uint32_t>(payload.client_id));
                 from_matching_engine.pop();
                 continue;
             }
@@ -243,8 +264,8 @@ void ClientHandler::process() {
             reject.reject_reason = payload.flags; // flags is the reject reason
             reject.order_id = payload.exch_order_id; // no exch order id is generated for rejects so pass this through
 
-            logger->info("Sending reject to client {} seq {} order id {} reason {}", payload.client_id,
-                payload.client_seq, payload.exch_order_id, payload.flags);
+            logger->info("Sending reject to client {} seq {} order id {} reason {}", static_cast<uint32_t>(payload.client_id),
+                static_cast<uint32_t>(payload.client_seq), static_cast<uint64_t>(payload.exch_order_id), payload.flags);
 
             write_msg_to_client(payload.client_id, payload.client_seq, reject);
             from_matching_engine.pop();
@@ -264,7 +285,9 @@ void ClientHandler::process() {
                 ack.price = payload.price;
 
                 logger->info("Sending ack to client {} seq {} order id {} exch order id {} quantity {} price {}",
-                             client_id, payload.client_seq, client_order_id, payload.exch_order_id, payload.quantity, payload.price);
+                             client_id, static_cast<uint32_t>(payload.client_seq), client_order_id,
+                             static_cast<uint64_t>(payload.exch_order_id),
+                             static_cast<uint32_t>(payload.quantity), static_cast<uint32_t>(payload.price));
 
                 write_msg_to_client(client_id, payload.client_seq, ack);
                 break;
@@ -278,7 +301,9 @@ void ClientHandler::process() {
                 fill.flags = payload.flags;
 
                 logger->info("Sending fill to client {} seq {} order id {} quantity {} price {} flags {}",
-                             client_id, payload.client_seq, client_order_id, payload.quantity, payload.price, payload.flags);
+                             client_id, static_cast<uint32_t>(payload.client_seq), client_order_id,
+                             static_cast<uint32_t>(payload.quantity),
+                             static_cast<uint32_t>(payload.price), payload.flags);
 
                 write_msg_to_client(client_id, payload.client_seq, fill);
 
@@ -294,7 +319,8 @@ void ClientHandler::process() {
                 closed.header.msg_type = static_cast<uint8_t>(MSG_TYPE::CLOSE);
                 closed.order_id = client_order_id;
 
-                logger->info("Sending close to client {} seq {} order id {}", client_id, payload.client_seq, client_order_id);
+                logger->info("Sending close to client {} seq {} order id {}", client_id,
+                    static_cast<uint32_t>(payload.client_seq), client_order_id);
 
                 write_msg_to_client(client_id, payload.client_seq, closed);
 
@@ -339,6 +365,11 @@ void ClientHandler::write_msg_to_client(uint32_t client_id, uint32_t last_seq_nu
 template <typename Msg>
 ssize_t ClientHandler::write_msg(int sock_fd, Msg& msg) {
     // fill in the header fields
+    if (sock_to_session_info.find(sock_fd) == sock_to_session_info.end()) {
+        logger->warn("ClientHandler: socket {} not found in session info", sock_fd);
+        return -1;
+    }
+
     auto& session_info = sock_to_session_info[sock_fd];
 
     msg.header.length = sizeof(Msg);
@@ -352,7 +383,7 @@ ssize_t ClientHandler::write_msg(int sock_fd, Msg& msg) {
 
     ssize_t bytes_sent = 0;
     while (bytes_sent < msg.header.length) {
-        ssize_t n = ::write(sock_fd, reinterpret_cast<char*>(&msg) + bytes_sent, msg.header.length - bytes_sent);
+        ssize_t n = ::send(sock_fd, reinterpret_cast<char*>(&msg) + bytes_sent, msg.header.length - bytes_sent, MSG_NOSIGNAL);
         if (n == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 continue;
@@ -371,6 +402,10 @@ ssize_t ClientHandler::write_msg(int sock_fd, Msg& msg) {
 }
 
 void ClientHandler::update_last_seq_num(int sock_fd, uint32_t seq_num) {
+    if (sock_to_session_info.find(sock_fd) == sock_to_session_info.end()) {
+        logger->warn("ClientHandler: socket {} not found in session info", sock_fd);
+        return;
+    }
     sock_to_session_info[sock_fd].last_seq_num = seq_num;
 }
 

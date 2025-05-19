@@ -63,8 +63,9 @@ static int create_mcast_socket(const std::string& ip, uint16_t port, const std::
 
 MDClient::MDClient(std::string live_ip, uint16_t live_port,
         std::string snapshot_ip, uint16_t snapshot_port,
-        std::string bind_ip, std::shared_ptr<spdlog::logger> logger)
-        : logger(logger), snapshot_ip(snapshot_ip), bind_ip(bind_ip) {
+        std::string bind_ip, std::shared_ptr<spdlog::logger> logger,
+        bool recover_on_drops)
+        : logger(logger), snapshot_ip(snapshot_ip), bind_ip(bind_ip), recover_on_drops(recover_on_drops) {
 
     live_fd = create_mcast_socket(live_ip, live_port, bind_ip, logger);
     snapshot_fd = create_mcast_socket(snapshot_ip, snapshot_port, bind_ip, logger);
@@ -76,6 +77,10 @@ MDClient::~MDClient() {
     for (auto& [symbol, order_book] : symbol_to_order_book) {
         delete order_book;
     }
+}
+
+void MDClient::register_trade_summary_listener(TradeSummaryListener* listener) {
+    trade_summary_listener = listener;
 }
 
 void MDClient::wait_for_snapshot() {
@@ -191,15 +196,17 @@ void MDClient::wait_for_snapshot() {
     }
 
     // unsubscribe from snapshot feed
-    struct ip_mreq mreq;
-    mreq.imr_multiaddr.s_addr = inet_addr(snapshot_ip.c_str());
-    mreq.imr_interface.s_addr = inet_addr(bind_ip.c_str());
+    if (!recover_on_drops) {
+        struct ip_mreq mreq;
+        mreq.imr_multiaddr.s_addr = inet_addr(snapshot_ip.c_str());
+        mreq.imr_interface.s_addr = inet_addr(bind_ip.c_str());
 
-    if (setsockopt(snapshot_fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, (char *)&mreq, sizeof(mreq)) < 0) {
-        throw std::runtime_error("Failed to leave multicast group");
+        if (setsockopt(snapshot_fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, (char *)&mreq, sizeof(mreq)) < 0) {
+            throw std::runtime_error("Failed to leave multicast group");
+        }
+
+        close(snapshot_fd);
     }
-
-    close(snapshot_fd);
 }
 
 void MDClient::process() {
@@ -250,14 +257,33 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
             return;
         }
 
-        logger->info("Message type: {}", static_cast<uint8_t>(header->msg_type));
-        logger->info("Sequence number: {}", header->seq_num);
-
-        if (header->seq_num != last_md_seq_num + 1) {
+        if (header->seq_num > last_md_seq_num + 1) {
             logger->error("Sequence number out of order: expected={}, got={}", last_md_seq_num + 1, header->seq_num);
+
+            if (recover_on_drops) {
+                logger->info("Restarting snapshot recovery process");
+                symbol_to_order_book.clear();
+                order_to_symbol.clear();
+                live_buffer.clear();
+                snapshot_buffer.clear();
+
+                snapshot_complete.clear();
+                last_snapshot_seq_num = 0;
+
+                // wait for a new snapshot
+                wait_for_snapshot();
+                logger->info("Snapshot recovery complete");
+            }
             return;
+
+        } else if (header->seq_num <= last_md_seq_num) {
+            logger->info("Skipping message with sequence number: {}", header->seq_num);
+            len -= header->length;
+            buf += header->length;
+            continue;
         }
 
+        //logger->info("Processing message: seq_num={}, type={}, length={}", header->seq_num, static_cast<uint8_t>(header->msg_type), header->length);
         last_md_seq_num = header->seq_num;
 
         switch (header->msg_type) {
@@ -271,9 +297,9 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
                 if (symbol_to_order_book.find(new_order->symbol) == symbol_to_order_book.end()) {
                     symbol_to_order_book[new_order->symbol] = new OrderBook(logger);
                 }
+                //logger->info("New order: order_id={} symbol={} side={} quantity={} price={}", new_order->order_id, new_order->symbol, static_cast<int>(new_order->side), new_order->quantity, new_order->price);
                 symbol_to_order_book[new_order->symbol]->new_order(new_order->order_id, new_order->side, new_order->quantity, new_order->price, new_order->flags);
                 order_to_symbol[new_order->order_id] = new_order->symbol;
-//                std::cout << "new_order " << new_order->order_id << " " << new_order->price << std::endl;
                 break;
             }
             case md::MSG_TYPE::DELETE_ORDER: {
@@ -288,6 +314,8 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
                     logger->error("Symbol not found for order: {}", delete_order->order_id);
                     return;
                 }
+
+                //logger->info("Seq {} Delete order: order_id={} symbol={}", header->seq_num, delete_order->order_id, symbol);
                 symbol_to_order_book[symbol]->delete_order(delete_order->order_id);
                 break;
             }
@@ -303,6 +331,7 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
                     logger->error("Symbol not found for order: {}", modify_order->order_id);
                     return;
                 }
+                //logger->info("Modify order: order_id={}, side={}, quantity={}, price={}", modify_order->order_id, static_cast<int>(modify_order->side), modify_order->quantity, modify_order->price);
                 symbol_to_order_book[symbol]->modify_order(modify_order->order_id, modify_order->side, modify_order->quantity, modify_order->price);
                 break;
             }
@@ -313,11 +342,17 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
                 }
 
                 md::trade* trade = reinterpret_cast<md::trade*>(buf);
+                if (order_to_symbol.find(trade->order_id) == order_to_symbol.end()) {
+                    logger->error("Order ID not found: {}", trade->order_id);
+                    return;
+                }
+
                 uint32_t symbol = order_to_symbol[trade->order_id];
                 if (symbol_to_order_book.find(symbol) == symbol_to_order_book.end()) {
                     logger->error("Symbol not found for order: {}", trade->order_id);
                     return;
                 }
+    //            logger->info("Trade: order_id={}, quantity={}, price={}", trade->order_id, trade->quantity, trade->price);
                 symbol_to_order_book[symbol]->order_trade(trade->order_id, trade->quantity, trade->price);
                 break;
             }
@@ -332,12 +367,15 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
                     logger->error("Symbol not found for trade summary: {}", trade_summary->symbol);
                     return;
                 }
-                logger->info("Trade summary: symbol={}, aggressor_side={}, total_quantity={}, last_price={}", trade_summary->symbol, static_cast<int>(trade_summary->aggressor_side), trade_summary->total_quantity, trade_summary->last_price);
+
+                if (trade_summary_listener) {
+                    trade_summary_listener->on_trade_summary(trade_summary->symbol, trade_summary->total_quantity, trade_summary->last_price,
+                                                             trade_summary->aggressor_side);
+                }
+          //      logger->info("Trade summary: symbol={}, aggressor_side={}, total_quantity={}, last_price={}", trade_summary->symbol, static_cast<int>(trade_summary->aggressor_side), trade_summary->total_quantity, trade_summary->last_price);
                 break;
             }
             case md::MSG_TYPE::HEARTBEAT: {
-                md::md_header* header = reinterpret_cast<md::md_header*>(buf);
-                logger->info("Heartbeat {}", header->seq_num);
                 break;
             }
             default:

@@ -459,7 +459,7 @@ TEST_F(OEClientHandlerTest, MultipleOrderCancelModify) {
     validate(MSG_TYPE::DELETE_ORDER, 1, 1, 2, md::SIDE::BUY, 0, 0, 0);
 
     // send close back
-    from_matching_engine.emplace(MSG_TYPE::CLOSE, exch_order_id, 1, 2, md::SIDE::BUY, 0, 0, 0);
+    from_matching_engine.emplace(MSG_TYPE::CLOSE, exch_order_id, 1, 2, 1, md::SIDE::BUY, 0, 0, 0);
     handler.process(); // process the close
 
     // read the close response

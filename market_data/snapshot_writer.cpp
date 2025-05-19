@@ -65,6 +65,11 @@ void SnapshotWriter::process() {
         last_md_seq_num = payload.seq_num;
         switch (payload.msg_type) {
             case md::MSG_TYPE::NEW_ORDER: {
+                if (symbol_to_bids.find(payload.symbol) == symbol_to_bids.end()) {
+                    logger->error("Symbol not found: {}", payload.symbol);
+                    break;
+                }
+
                 if (payload.side == md::SIDE::BUY) {
                     auto& orders = symbol_to_bids[payload.symbol];
                     orders.push_back({{0, sizeof(md::new_order), 0, 0, md::MSG_TYPE::NEW_ORDER},
@@ -78,6 +83,10 @@ void SnapshotWriter::process() {
                 break;
             }
             case md::MSG_TYPE::DELETE_ORDER: {
+                if (order_to_symbol.find(payload.order_id) == order_to_symbol.end()) {
+                    logger->error("Order not found: {}", payload.order_id);
+                    break;
+                }
                 uint32_t symbol = order_to_symbol[payload.order_id];
 
                 auto& bid_orders = symbol_to_bids[symbol];
@@ -94,6 +103,11 @@ void SnapshotWriter::process() {
                 break;
             }
             case md::MSG_TYPE::MODIFY_ORDER: {
+                if (order_to_symbol.find(payload.order_id) == order_to_symbol.end()) {
+                    logger->error("Order not found: {}", payload.order_id);
+                    break;
+                }
+
                 uint32_t symbol = order_to_symbol[payload.order_id];
 
                 auto& bid_orders = symbol_to_bids[symbol];
@@ -143,6 +157,11 @@ void SnapshotWriter::process() {
 
             }
             case md::MSG_TYPE::TRADE: {
+                if (order_to_symbol.find(payload.order_id) == order_to_symbol.end()) {
+                    logger->error("Order not found for trade: {}", payload.order_id);
+                    break;
+                }
+
                 uint32_t symbol = order_to_symbol[payload.order_id];
                 // reduce the quantity of the order by the trade amount
                 auto& bid_orders = symbol_to_bids[symbol];
@@ -264,6 +283,11 @@ void SnapshotWriter::send() {
     if (rc < 0) {
         logger->error("Failed to send snapshot: {}", strerror(errno));
         throw std::runtime_error("Failed to send snapshot");
+    }
+
+    if (rc != static_cast<ssize_t>(buffer_size)) {
+        logger->error("Partial send: {} bytes sent, {} bytes expected", rc, buffer_size);
+        throw std::runtime_error("Partial send");
     }
 
     buffer_size = 0;

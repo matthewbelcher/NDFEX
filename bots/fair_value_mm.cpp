@@ -31,6 +31,17 @@ void FairValueMarketMaker::process() {
         int32_t fair_value = fv[i]->process(nanotime());
         fair_value += variances[i];
 
+        int32_t position = oe.get_position(symbols[i].symbol);
+
+        if (position > 100) {
+            position = 100;
+        } else if (position < -100) {
+            position = -100;
+        }
+        fair_value -= position;
+
+        fair_value = std::max(fair_value, static_cast<int32_t>(symbols[i].min_price + 10 * symbols[i].tick_size));
+
         // place orders 2 ticks away from the fair value
         int32_t bid_price = round_to_tick_size(fair_value - width_in_ticks * symbols[i].tick_size, symbols[i].tick_size, md::SIDE::BUY);
         int32_t ask_price = round_to_tick_size(fair_value + width_in_ticks * symbols[i].tick_size, symbols[i].tick_size, md::SIDE::SELL);
@@ -52,7 +63,7 @@ void FairValueMarketMaker::process() {
 
         if (bids.size() > 0 && (bids.back().price != bid_price || last_order_send_ts + 30e9 < nanotime())) {
             logger->info("Cancelling bid order: symbol={}, price={}, quantity={}", symbols[i].symbol, bid_price, quantity);
-            logger->info("Price was {} and now is {} fv {} ts {}", bids.back().price, bid_price, fair_value, nanotime());
+            logger->info("Price was {} and now is {} fv {} pos {} ts {}", bids.back().price, bid_price, fair_value, position, nanotime());
             oe.cancel_order(bids.back().order_id);
             bids.pop_back();
 
@@ -62,7 +73,7 @@ void FairValueMarketMaker::process() {
 
         } else if (bids.size() == 0) {
             logger->info("Sending bid order: symbol={}, price={}, quantity={}", symbols[i].symbol, bid_price, quantity);
-            logger->info("fv {} ts {}", fair_value, nanotime());
+            logger->info("fv {} pos {} ts {}", fair_value, position, nanotime());
             oe.send_order(symbols[i].symbol, last_order_id, md::SIDE::BUY, quantity, bid_price, 0);
             bids.push_back({last_order_id++, bid_price, quantity});
 
@@ -75,7 +86,7 @@ void FairValueMarketMaker::process() {
 
         if (asks.size() > 0 && (asks.back().price != ask_price || last_order_send_ts + 30e9 < nanotime())) {
             logger->info("Cancelling ask order: symbol={}, price={}, quantity={}", symbols[i].symbol, ask_price, quantity);
-            logger->info("Price was {} and now is {} fv {} ts {}", asks.back().price, ask_price, fair_value, nanotime());
+            logger->info("Price was {} and now is {} fv {} pos {} ts {}", asks.back().price, ask_price, fair_value, position, nanotime());
             oe.cancel_order(asks.back().order_id);
             asks.pop_back();
 
@@ -85,7 +96,7 @@ void FairValueMarketMaker::process() {
 
         } else if (asks.size() == 0) {
             logger->info("Sending ask order: symbol={}, price={}, quantity={}", symbols[i].symbol, ask_price, quantity);
-            logger->info("fv {} ts {}", fair_value, nanotime());
+            logger->info("fv {} pos {} ts {}", fair_value, position, nanotime());
 
             oe.send_order(symbols[i].symbol, last_order_id, md::SIDE::SELL, quantity, ask_price, 0);
             asks.push_back({last_order_id++, ask_price, quantity});

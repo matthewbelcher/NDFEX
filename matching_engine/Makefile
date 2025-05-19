@@ -2,7 +2,7 @@ CXX = clang++
 CXXFLAGS = -std=c++17 -Wall -Werror -I../spdlog/include -I../ -I../SPSCQueue -I../order_entry -I./
 LDFLAGS = -pthread
 
-SRC = matching_engine.cpp ../order_entry/oe_server.cpp md_mcast.cpp ../order_entry/oe_server.cpp utils.cpp ../order_entry/oe_validator.cpp ../order_entry/oe_client_handler.cpp
+SRC = matching_engine.cpp ../order_entry/oe_server.cpp md_mcast.cpp ../order_entry/oe_server.cpp utils.cpp ../order_entry/oe_validator.cpp ../order_entry/oe_client_handler.cpp clearing_mcast.cpp
 OBJ = $(SRC:.cpp=.o)
 TARGET = out/matching_engine
 

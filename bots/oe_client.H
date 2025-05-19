@@ -22,9 +22,18 @@ public:
 
     void cancel_order(uint64_t order_id);
 
+    void modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price);
+
     void process();
 
+    int32_t get_position(uint32_t symbol) const;
+
 private:
+
+    struct open_order {
+        md::SIDE side;
+        uint32_t symbol;
+    };
 
     int sock_fd;
     std::vector<char> buffer;
@@ -35,6 +44,9 @@ private:
     const std::string ip;
     const uint16_t port;
     std::shared_ptr<spdlog::logger> logger;
+
+    std::unordered_map<uint32_t, int32_t> positions;
+    std::unordered_map<uint32_t, open_order> open_orders;
 };
 
 } // namespace ndfex::bots

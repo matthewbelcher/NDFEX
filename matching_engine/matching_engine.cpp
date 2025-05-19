@@ -30,13 +30,14 @@ using namespace ndfex;
 int main(int argc, char** argv) {
 
     // get ip address from command line
-    if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " <ip address> <mcast ip>" << std::endl;
+    if (argc != 4) {
+        std::cerr << "Usage: " << argv[0] << " <ip address> <mcast ip> <clearing ip>" << std::endl;
         return 1;
     }
 
     std::string bind_ip = argv[1];
     std::string mcast_ip = argv[2];
+    std::string clearing_ip = argv[3];
 
     std::vector<symbol_definition> symbols = {
         {1, 10, 1, 1000, 10000000, 0}, // GOLD
@@ -57,12 +58,15 @@ int main(int argc, char** argv) {
     // create market data publisher
     MarketDataPublisher publisher(mcast_ip, 12345, bind_ip, async_file);
 
+    // create clearing publisher
+    clearing::ClearingPublisher clearing_publisher(clearing_ip, 12346, bind_ip, async_file);
+
     // create broker queues
-    SPSCOEQueue to_client(1000);
-    SPSCOEQueue from_client(1000);
+    SPSCOEQueue to_client(80000);
+    SPSCOEQueue from_client(80000);
 
     // create matching engine broker
-    MatchingEngineBroker broker(to_client, from_client, publisher, async_file);
+    MatchingEngineBroker broker(to_client, from_client, publisher, clearing_publisher, async_file);
 
     // add symbols to broker
     for (const auto& symbol : symbols) {
@@ -89,7 +93,6 @@ int main(int argc, char** argv) {
         std::cout << "Added user: " << username << " " << password << " " << client_id << std::endl;
     }
 
-
     auto symbols_map = [] (const std::vector<symbol_definition>& symbols) {
         std::unordered_map<uint32_t, symbol_definition> map;
         for (const auto& symbol : symbols) {
@@ -109,25 +112,30 @@ int main(int argc, char** argv) {
         try {
             while (running) {
                 broker.process();
-                async_file->flush();
             }
         } catch (const std::exception& e) {
-            async_file->error("Exception in publisher thread: {}", e.what());
             std::cout << "Exception in publisher thread: " << e.what() << std::endl;
+
+            async_file->error("Exception in publisher thread: {}", e.what());
+            running = false;
         }
     });
 
     try {
         oe_server.run();
     } catch (const std::exception& e) {
-        async_file->error("Exception in main thread: {}", e.what());
         std::cout << "Exception in main thread: " << e.what() << std::endl;
+
+        async_file->error("Exception in main thread: {}", e.what());
+        async_file->flush();
+
         running = false;
         t.join();
-        async_file->flush();
         spdlog::shutdown();
         return 1;
     }
+
+    std::cout << "Shutting down" << std::endl;
 
     running = false;
     t.join();

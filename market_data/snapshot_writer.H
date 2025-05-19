@@ -42,7 +42,7 @@ private:
 
     int mcast_fd;
     struct sockaddr_in mcast_addr;
-    char buffer[1500];
+    char buffer[1460];
     size_t buffer_size{0};
 
     std::uint32_t last_md_seq_num{0};

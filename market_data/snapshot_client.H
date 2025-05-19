@@ -32,6 +32,8 @@ private:
 
     SPSCMDQueue &queue;
 
+    uint32_t last_seq_num = 0;
+
 };
 
 } // namespace ndfex::md

@@ -7,17 +7,18 @@ class MockSubscriber {
 public:
 
     std::vector<std::tuple<uint64_t, ndfex::md::SIDE, uint32_t, int32_t>> new_orders;
-    std::vector<uint64_t> deleted_orders;
+    std::vector<std::tuple<uint64_t, bool>> deleted_orders;
     std::vector<std::tuple<uint64_t, ndfex::md::SIDE, uint32_t, int32_t>> modified_orders;
     std::vector<std::tuple<uint64_t, uint32_t, int32_t>> trades;
     std::vector<std::tuple<uint64_t, ndfex::md::SIDE, uint32_t, int32_t>> fills;
+    std::vector<uint64_t> cancel_rejects;
 
     void onNewOrder(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) {
         new_orders.emplace_back(order_id, side, quantity, price);
     }
 
-    void onDeleteOrder(uint64_t order_id) {
-        deleted_orders.push_back(order_id);
+    void onDeleteOrder(uint64_t order_id, bool publish = true) {
+        deleted_orders.emplace_back(order_id, publish);
     }
 
     void onModifyOrder(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, int32_t price) {
@@ -28,8 +29,12 @@ public:
         trades.emplace_back(order_id, quantity, price);
     }
 
-    void onFill(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) {
+    void onFill(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, bool active) {
         fills.emplace_back(order_id, side, quantity, price);
+    }
+
+    void onCancelReject(uint64_t order_id) {
+        cancel_rejects.push_back(order_id);
     }
 };
 
@@ -51,7 +56,7 @@ TEST(OrderLadderTest, DeleteOrder) {
     orderLadder.delete_order(1);
 
     ASSERT_EQ(subscriber.deleted_orders.size(), 1);
-    EXPECT_EQ(subscriber.deleted_orders[0], 1);
+    EXPECT_EQ(std::get<0>(subscriber.deleted_orders[0]), 1);
 }
 
 TEST(OrderLadderTest, SimpleCrossTrade) {
@@ -77,6 +82,9 @@ TEST(OrderLadderTest, SimpleCrossTrade) {
     EXPECT_EQ(std::get<2>(subscriber.fills[1]), 10);
     EXPECT_EQ(std::get<3>(subscriber.fills[1]), 50);
 
+    // check no deleted orders are emitted
+    ASSERT_EQ(subscriber.deleted_orders.size(), 0);
+    ASSERT_EQ(subscriber.modified_orders.size(), 0);
 }
 
 TEST(OrderLadderTest, CrossMultipleLevels) {
@@ -169,9 +177,13 @@ TEST(OrderLadderTest, VeryComplicatedTest) {
     // Delete some more orders
     orderLadder.delete_order(3);
 
-    // Check that delete_order throws an exception for orders that matched and were not added to the book
-    EXPECT_THROW(orderLadder.delete_order(13), std::runtime_error);
-    EXPECT_THROW(orderLadder.delete_order(25), std::runtime_error);
+    // these cancels should be rejected
+    orderLadder.delete_order(13);
+    orderLadder.delete_order(25);
+
+    ASSERT_EQ(subscriber.cancel_rejects.size(), 2);
+    EXPECT_EQ(subscriber.cancel_rejects[0], 13);
+    EXPECT_EQ(subscriber.cancel_rejects[1], 25);
 
     // Add more orders to create more matches
     orderLadder.new_order(41, ndfex::md::SIDE::SELL, 30, 60, 0); // Should match with BUY orders at 60, 59, and 58
@@ -270,6 +282,8 @@ TEST(OrderLadderTest, ModifyPrice) {
     EXPECT_EQ(std::get<1>(subscriber.modified_orders[2]), ndfex::md::SIDE::SELL);
     EXPECT_EQ(std::get<2>(subscriber.modified_orders[2]), 10);
     EXPECT_EQ(std::get<3>(subscriber.modified_orders[2]), 60);
+
+    ASSERT_EQ(subscriber.deleted_orders.size(), 0);
 }
 
 TEST(OrderLadderTest, ModifyQuantityToZero) {
@@ -280,7 +294,7 @@ TEST(OrderLadderTest, ModifyQuantityToZero) {
     orderLadder.modify_order(1, ndfex::md::SIDE::BUY, 0, 50); // Modify to 0
 
     ASSERT_EQ(subscriber.deleted_orders.size(), 1);
-    EXPECT_EQ(subscriber.deleted_orders[0], 1);
+    EXPECT_EQ(std::get<0>(subscriber.deleted_orders[0]), 1);
 }
 
 TEST(OrderLadderTest, ModifyIntoTrade) {
@@ -309,10 +323,43 @@ TEST(OrderLadderTest, ModifyIntoTrade) {
     EXPECT_EQ(std::get<3>(subscriber.fills[1]), 60);
 
     EXPECT_EQ(subscriber.modified_orders.size(), 1);
+
     EXPECT_EQ(std::get<0>(subscriber.modified_orders[0]), 1);
     EXPECT_EQ(std::get<1>(subscriber.modified_orders[0]), ndfex::md::SIDE::BUY);
-    EXPECT_EQ(std::get<2>(subscriber.modified_orders[0]), 15);
+    EXPECT_EQ(std::get<2>(subscriber.modified_orders[0]), 5);
     EXPECT_EQ(std::get<3>(subscriber.modified_orders[0]), 60);
+
+    ASSERT_EQ(subscriber.deleted_orders.size(), 0);
+}
+
+TEST(OrderLadderTest, ModifyIntoFullyFilled) {
+    MockSubscriber subscriber;
+    ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber, 1337);
+
+    orderLadder.new_order(1, ndfex::md::SIDE::BUY, 10, 50, 0); // BUY order at 50
+    orderLadder.new_order(2, ndfex::md::SIDE::SELL, 20, 60, 0); // SELL order at 50
+
+    orderLadder.modify_order(1, ndfex::md::SIDE::BUY, 15, 60); // Modify to 15
+
+    ASSERT_EQ(subscriber.trades.size(), 1);
+    EXPECT_EQ(std::get<0>(subscriber.trades[0]), 2);
+    EXPECT_EQ(std::get<1>(subscriber.trades[0]), 15);
+    EXPECT_EQ(std::get<2>(subscriber.trades[0]), 60);
+
+    ASSERT_EQ(subscriber.fills.size(), 2);
+    EXPECT_EQ(std::get<0>(subscriber.fills[0]), 2);
+    EXPECT_EQ(std::get<1>(subscriber.fills[0]), ndfex::md::SIDE::SELL);
+    EXPECT_EQ(std::get<2>(subscriber.fills[0]), 15);
+    EXPECT_EQ(std::get<3>(subscriber.fills[0]), 60);
+
+    EXPECT_EQ(std::get<0>(subscriber.fills[1]), 1);
+    EXPECT_EQ(std::get<1>(subscriber.fills[1]), ndfex::md::SIDE::BUY);
+    EXPECT_EQ(std::get<2>(subscriber.fills[1]), 15);
+    EXPECT_EQ(std::get<3>(subscriber.fills[1]), 60);
+
+    ASSERT_EQ(subscriber.deleted_orders.size(), 1);
+    EXPECT_EQ(std::get<0>(subscriber.deleted_orders[0]), 1);
+    EXPECT_EQ(std::get<1>(subscriber.deleted_orders[0]), true);
 }
 
 TEST(OrderLadderTest, PartialFillModifyAutomaticallyClose) {
@@ -341,7 +388,7 @@ TEST(OrderLadderTest, PartialFillModifyAutomaticallyClose) {
     EXPECT_EQ(std::get<3>(subscriber.fills[1]), 50);
 
     ASSERT_EQ(subscriber.deleted_orders.size(), 1);
-    EXPECT_EQ(subscriber.deleted_orders[0], 1);
+    EXPECT_EQ(std::get<0>(subscriber.deleted_orders[0]), 1);
 }
 
 TEST(OrderLadderTest, PartialFillOnEntryThenModifyAutoClose) {
@@ -370,7 +417,7 @@ TEST(OrderLadderTest, PartialFillOnEntryThenModifyAutoClose) {
     EXPECT_EQ(std::get<3>(subscriber.fills[1]), 50);
 
     ASSERT_EQ(subscriber.deleted_orders.size(), 1);
-    EXPECT_EQ(subscriber.deleted_orders[0], 2);
+    EXPECT_EQ(std::get<0>(subscriber.deleted_orders[0]), 2);
 }
 
 TEST(OrderLadderTest, PartialFillOnEntryThenModifyUpThenDownAutoClose) {
@@ -420,7 +467,7 @@ TEST(OrderLadderTest, PartialFillOnEntryThenModifyUpThenDownAutoClose) {
     orderLadder.modify_order(2, ndfex::md::SIDE::SELL, 5, 50); // Modify to 5
 
     ASSERT_EQ(subscriber.deleted_orders.size(), 1);
-    EXPECT_EQ(subscriber.deleted_orders[0], 2);
+    EXPECT_EQ(std::get<0>(subscriber.deleted_orders[0]), 2);
 }
 
 int main(int argc, char **argv) {

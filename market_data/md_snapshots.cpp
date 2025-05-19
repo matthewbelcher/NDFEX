@@ -2,15 +2,27 @@
 #include "snapshot_writer.H"
 
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/daily_file_sink.h>
+#include <spdlog/async.h>
 #include <iostream>
 
 #include <thread>
 #include <atomic>
 
+void set_cpu_affinity(int cpu) {
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(cpu, &mask);
+    if (sched_setaffinity(0, sizeof(mask), &mask) == -1) {
+        std::cerr << "Failed to set cpu affinity" << std::endl;
+    }
+}
+
+
 int main(int argc, char** argv) {
 
-    ndfex::SPSCMDQueue queue(1000);
-    auto logger = spdlog::default_logger();
+    ndfex::SPSCMDQueue queue(80000);
+    auto logger = spdlog::daily_logger_mt<spdlog::async_factory>("async_logger", "logs/SNAPSHOT");
 
     if (argc != 6) {
         std::cerr << "Usage: " << argv[0] << " <ip address> <port> <snapshot mcast ip address> <mcast port> <mcast bind ip>" << std::endl;
@@ -32,6 +44,7 @@ int main(int argc, char** argv) {
     std::cout << "Starting snapshot client thread" << std::endl;
     std::atomic<bool> running = true;
     std::thread client_thread([&client, &running, logger]() {
+        set_cpu_affinity(3); // Set affinity to target core
         try {
             while (running) {
                 client.process();

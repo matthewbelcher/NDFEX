@@ -22,7 +22,7 @@ namespace ndfex::oe {
 
         int epoll_fd;
         int listen_fd;
-        struct epoll_event events[16];
+        struct epoll_event events[32];
 
         std::shared_ptr<spdlog::logger> logger;
         StreamParser<ClientHandler> parser;

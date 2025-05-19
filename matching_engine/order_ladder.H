@@ -69,7 +69,7 @@ namespace ndfex {
                    PriceLevels& opposite_side_price_levels);
 
         template <typename PriceLevels>
-        void handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, PriceLevels& price_levels,
+        void handle_new_order(uint64_t order_id, md::SIDE side, uint32_t& quantity, int32_t price, uint8_t flags, PriceLevels& price_levels,
                               bool notify, uint32_t filled_quantity);
 
         template <typename PriceLevels>
@@ -89,7 +89,7 @@ namespace ndfex {
 
     template <typename Subscriber>
     template <typename PriceLevels>
-    void OrderLadder<Subscriber>::handle_new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags,
+    void OrderLadder<Subscriber>::handle_new_order(uint64_t order_id, md::SIDE side, uint32_t& quantity, int32_t price, uint8_t flags,
                                                    PriceLevels& price_levels, bool notify, uint32_t filled_quantity) {
         if (quantity > filled_quantity) {
             quantity = quantity - filled_quantity;
@@ -218,7 +218,7 @@ namespace ndfex {
         }
 
         if (notify) {
-            subscriber->onDeleteOrder(order_id);
+            subscriber->onDeleteOrder(order_id, true);
         }
     }
 
@@ -242,10 +242,22 @@ namespace ndfex {
             return;
         }
 
-        delete_order<false>(order_id);
-        new_order<false>(order_id, side, quantity, price, it->second.flags, it->second.filled_quantity);
+        uint32_t pre_modify_filled_quantity = it->second.filled_quantity;
 
-        subscriber->onModifyOrder(order_id, symbol, side, quantity - it->second.filled_quantity, price);
+        delete_order<false>(order_id);
+        if (it->second.side == md::SIDE::BUY) {
+            handle_new_order(order_id, side, quantity, price, it->second.flags, buy_levels, false, pre_modify_filled_quantity);
+        } else {
+            handle_new_order(order_id, side, quantity, price, it->second.flags, sell_levels, false, pre_modify_filled_quantity);
+        }
+
+        if (quantity > 0) {
+            // order is not fully matched
+            subscriber->onModifyOrder(order_id, symbol, side, quantity, price);
+        } else {
+            // order is fully matched, close it
+            subscriber->onDeleteOrder(order_id, true);
+        }
     }
 
     template <typename Subscriber>
@@ -266,12 +278,13 @@ namespace ndfex {
                     // order is fully matched
                     subscriber->onTrade(order->order_id, order->quantity, order->price);
                     subscriber->onFill(order->order_id, symbol, order->side, order->quantity, order->price,
-                     static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED));
+                     static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED), false);
 
                     quantity -= order->quantity;
 
                     subscriber->onFill(incoming_order_id, symbol, side, order->quantity, order->price,
-                                       static_cast<uint8_t>(quantity > 0 ? oe::FILL_FLAGS::PARTIAL_FILL : oe::FILL_FLAGS::CLOSED));
+                                       static_cast<uint8_t>(quantity > 0 ? oe::FILL_FLAGS::PARTIAL_FILL : oe::FILL_FLAGS::CLOSED),
+                                    true);
 
                     auto to_delete = order;
                     order = order->next;
@@ -280,9 +293,9 @@ namespace ndfex {
                     // order is partially matched
                     subscriber->onTrade(order->order_id, quantity, order->price);
                     subscriber->onFill(order->order_id, symbol, order->side, quantity, order->price,
-                                       static_cast<uint8_t>(oe::FILL_FLAGS::PARTIAL_FILL));
+                                       static_cast<uint8_t>(oe::FILL_FLAGS::PARTIAL_FILL), false);
                     subscriber->onFill(incoming_order_id, symbol, side, quantity, order->price,
-                                       static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED));
+                                       static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED), true);
 
                     order->filled_quantity = quantity;
                     order->quantity -= quantity;

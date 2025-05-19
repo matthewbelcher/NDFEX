@@ -28,7 +28,7 @@ TEST(OEStreamParserTest, NewOrder) {
     MockHandler handler;
     auto logger = spdlog::stdout_color_mt("test_logger_new_order");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
+    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
 
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     parser.parse(0, reinterpret_cast<char*>(&msg), sizeof(new_order));
@@ -41,7 +41,7 @@ TEST(OEStreamParserTest, NewOrderPartial) {
     MockHandler handler;
     auto logger = spdlog::stdout_color_mt("test_logger_new_order_partial");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
+    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
     parser.parse(0, buf.data(), 1);
@@ -55,7 +55,7 @@ TEST(OEStreamParserTest, NewOrderMultiple) {
     MockHandler handler;
     auto logger = spdlog::stdout_color_mt("test_logger_new_order_multiple");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
+    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
     parser.parse(0, buf.data(), buf.size());
@@ -70,7 +70,7 @@ TEST(OEStreamParserTest, NewOrderMultipleInSameBuffer) {
     MockHandler handler;
     auto logger = spdlog::stdout_color_mt("test_logger_new_order_multiple_same_buffer");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), 0, 0};
+    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
     buf += buf;
@@ -86,7 +86,7 @@ TEST(OEStreamParserTest, ErrorOnUnknownType) {
     MockHandler handler;
     auto logger = spdlog::stdout_color_mt("test_logger_error_on_unknown_type");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_request_header header = {sizeof(new_order), 0, 0, 0};
+    oe_request_header header = {sizeof(new_order), 0, ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
 
@@ -103,7 +103,40 @@ TEST(OEStreamParserTest, ErrorOnUnknownType) {
     EXPECT_EQ(err_msg.header.length, sizeof(error_message));
     EXPECT_EQ(err_msg.header.msg_type, static_cast<uint8_t>(MSG_TYPE::ERROR));
     //EXPECT_EQ(err_msg.error_code, static_cast<uint8_t>(ERROR_CODE::UNKNOWN_MSG_TYPE));
-    EXPECT_EQ(std::string(reinterpret_cast<char*>(err_msg.error_message), err_msg.error_message_length), "Unknown message type: 0");
+    EXPECT_EQ(std::string(reinterpret_cast<char*>(err_msg.error_message), err_msg.error_message_length), "Unknown message type");
+
+    // check the parser closed the socket
+    int flags = fcntl(fds[1], F_GETFL, 0);
+    EXPECT_EQ(flags, -1);
+
+    close(fds[0]);
+    close(fds[1]);
+}
+
+TEST(OEStreamParserTest, ErrorOnThrottleExceeded) {
+    MockHandler handler;
+    auto logger = spdlog::stdout_color_mt("test_logger_error_on_throttle_exceeded");
+    StreamParser<MockHandler> parser(handler, logger);
+    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
+    new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
+    std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
+
+    int fds[2];
+    pipe(fds); // create a pair of connected file descriptors
+
+    for (size_t i = 0; i < MAX_MSGS_PER_SECOND + 5; ++i) {
+        parser.parse(fds[1], buf.data(), buf.size());
+    }
+
+    EXPECT_EQ(handler.new_orders.size(), 1001);
+
+    // read the error message from the pipe
+    error_message err_msg;
+    read(fds[0], reinterpret_cast<char*>(&err_msg), sizeof(error_message));
+    EXPECT_EQ(err_msg.header.length, sizeof(error_message));
+    EXPECT_EQ(err_msg.header.msg_type, static_cast<uint8_t>(MSG_TYPE::ERROR));
+    //EXPECT_EQ(err_msg.error_code, static_cast<uint8_t>(ERROR_CODE::THROTTLE_EXCEEDED));
+    EXPECT_EQ(std::string(reinterpret_cast<char*>(err_msg.error_message), err_msg.error_message_length), "Too many messages per second");
 
     // check the parser closed the socket
     int flags = fcntl(fds[1], F_GETFL, 0);

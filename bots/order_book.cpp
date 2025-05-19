@@ -14,8 +14,8 @@ void OrderBook::print_levels(const PriceLevels &levels) {
 }
 
 void OrderBook::new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, uint32_t filled_quantity) {
-    logger->info("New order: id={}, side={}, quantity={}, price={}, flags={}, filled_quantity={}", order_id, static_cast<int>(side),
-    quantity, price, flags, filled_quantity);
+//    logger->info("New order: id={}, side={}, quantity={}, price={}, flags={}, filled_quantity={}", order_id, static_cast<int>(side),
+ //   quantity, price, flags, filled_quantity);
     orders.emplace(order_id, Order{side, price, quantity});
 
     // check if the price level already exists on the opposite side (this should not happen in a real exchange)
@@ -29,19 +29,19 @@ void OrderBook::new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, i
 
     if (side == md::SIDE::BUY) {
         buy_levels[price] += quantity;
-        print_levels(buy_levels);
+        //print_levels(buy_levels);
 
     } else {
         sell_levels[price] += quantity;
-        print_levels(sell_levels);
+        //print_levels(sell_levels);
     }
 }
 
 void OrderBook::delete_order(uint64_t order_id) {
-    logger->info("Delete order: id={}", order_id);
+//    logger->info("Delete order: id={}", order_id);
     auto it = orders.find(order_id);
     if (it == orders.end()) {
-        logger->warn("Order {} not found", order_id);
+        logger->warn("Delete Order {} not found", order_id);
         return;
     }
 
@@ -54,10 +54,10 @@ void OrderBook::delete_order(uint64_t order_id) {
 
     if (md::SIDE::BUY == order.side) {
         delete_order_from_levels(order_id, buy_levels);
-        print_levels(buy_levels);
+        //print_levels(buy_levels);
     } else {
         delete_order_from_levels(order_id, sell_levels);
-        print_levels(sell_levels);
+        //print_levels(sell_levels);
     }
 
     orders.erase(it);
@@ -67,7 +67,7 @@ template <typename PriceLevels>
 void OrderBook::delete_order_from_levels(uint64_t order_id, PriceLevels &levels) {
     auto it = orders.find(order_id);
     if (it == orders.end()) {
-        logger->warn("Order {} not found", order_id);
+        logger->warn("Delete Order {} not found", order_id);
         return;
     }
 
@@ -91,10 +91,10 @@ void OrderBook::delete_order_from_levels(uint64_t order_id, PriceLevels &levels)
 }
 
 void OrderBook::modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price) {
-    logger->info("Modify order: id={}, side={}, quantity={}, price={}", order_id, static_cast<int>(side), quantity, price);
+    //logger->info("Modify order: id={}, side={}, quantity={}, price={}", order_id, static_cast<int>(side), quantity, price);
     auto it = orders.find(order_id);
     if (it == orders.end()) {
-        logger->warn("Order {} not found", order_id);
+        logger->warn("Modify Order {} not found", order_id);
         return;
     }
 
@@ -107,10 +107,10 @@ void OrderBook::modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity
 
     if (side == md::SIDE::BUY) {
         buy_levels[price] += quantity;
-        print_levels(buy_levels);
+        //print_levels(buy_levels);
     } else {
         sell_levels[price] += quantity;
-        print_levels(sell_levels);
+        //print_levels(sell_levels);
     }
 
     it->second.price = price;
@@ -119,11 +119,9 @@ void OrderBook::modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity
 }
 
 void OrderBook::order_trade(uint64_t order_id, uint32_t quantity, int32_t price) {
-    logger->info("Order trade: id={}, quantity={}, price={}", order_id, quantity, price);
-
     auto it = orders.find(order_id);
     if (it == orders.end()) {
-        logger->warn("Order {} not found", order_id);
+        logger->warn("Trade Order {} not found", order_id);
         return;
     }
 
@@ -133,23 +131,29 @@ void OrderBook::order_trade(uint64_t order_id, uint32_t quantity, int32_t price)
         return;
     }
 
+    //logger->info("Order {} traded {} at price {}", order_id, quantity, price);
+
     order.quantity -= quantity;
     if (order.quantity == 0) {
         orders.erase(it);
         if (md::SIDE::BUY == order.side) {
-           buy_levels[order.price] -= quantity;
-           delete_order_from_levels(order_id, buy_levels);
+            buy_levels[order.price] -= quantity;
+            if (buy_levels[order.price] == 0) {
+                buy_levels.erase(order.price);
+            }
         } else {
-           sell_levels[order.price] -= quantity;
-           delete_order_from_levels(order_id, sell_levels);
+            sell_levels[order.price] -= quantity;
+            if (sell_levels[order.price] == 0) {
+                sell_levels.erase(order.price);
+            }
         }
     } else {
         if (md::SIDE::BUY == order.side) {
             buy_levels[order.price] -= quantity;
-            print_levels(buy_levels);
+            //print_levels(buy_levels);
         } else {
             sell_levels[order.price] -= quantity;
-            print_levels(sell_levels);
+            //print_levels(sell_levels);
         }
     }
 }

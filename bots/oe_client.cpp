@@ -9,6 +9,14 @@ namespace ndfex::bots {
 OEClient::OEClient(user_info user, std::string ip, uint16_t port, std::shared_ptr<spdlog::logger> logger)
     : user(user), ip(ip), port(port), logger(logger) {}
 
+int32_t OEClient::get_position(uint32_t symbol) const {
+    auto it = positions.find(symbol);
+    if (it != positions.end()) {
+        return it->second;
+    }
+    return 0;
+}
+
 bool OEClient::login() {
     sock_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (sock_fd == -1) {
@@ -94,6 +102,8 @@ void OEClient::send_order(uint32_t symbol, uint64_t order_id, md::SIDE side, uin
     order.price = price;
     order.flags = flags;
 
+    open_orders[order_id] = {side, symbol};
+
     ssize_t len = write(sock_fd, &order, sizeof(order));
     if (len == -1) {
         logger->error("Failed to send order: {}", strerror(errno));
@@ -114,6 +124,25 @@ void OEClient::cancel_order(uint64_t order_id) {
     ssize_t len = write(sock_fd, &order, sizeof(order));
     if (len == -1) {
         logger->error("Failed to send cancel order: {}", strerror(errno));
+    }
+}
+
+void OEClient::modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price) {
+    oe::modify_order order;
+    order.header.length = sizeof(oe::modify_order);
+    order.header.msg_type = static_cast<uint8_t>(oe::MSG_TYPE::MODIFY_ORDER);
+    order.header.seq_num = client_seq++;
+    order.header.client_id = user.client_id;
+    order.header.version = oe::OE_PROTOCOL_VERSION;
+    order.header.session_id = session_id;
+    order.order_id = order_id;
+    order.side = side;
+    order.quantity = quantity;
+    order.price = price;
+
+    ssize_t len = write(sock_fd, &order, sizeof(order));
+    if (len == -1) {
+        logger->error("Failed to send modify order: {}", strerror(errno));
     }
 }
 
@@ -155,7 +184,6 @@ void OEClient::process() {
                     return;
                 }
                 oe::order_reject reject = *reinterpret_cast<oe::order_reject*>(buffer.data());
-
                 logger->warn("Received reject for order id: {} reason: {}", reject.order_id, static_cast<int>(reject.reject_reason));
                 break;
             }
@@ -164,6 +192,7 @@ void OEClient::process() {
                     return;
                 }
                 oe::order_closed closed = *reinterpret_cast<oe::order_closed*>(buffer.data());
+                open_orders.erase(closed.order_id);
                 logger->info("Received close message for order id: {}", closed.order_id);
                 break;
             }
@@ -173,6 +202,12 @@ void OEClient::process() {
                 }
                 oe::order_fill fill = *reinterpret_cast<oe::order_fill*>(buffer.data());
                 logger->info("Received fill for order id: {} quantity: {} price: {}", fill.order_id, fill.quantity, fill.price);
+                open_order& order = open_orders[fill.order_id];
+                if (order.side == md::SIDE::BUY) {
+                    positions[order.symbol] += fill.quantity;
+                } else {
+                    positions[order.symbol] -= fill.quantity;
+                }
                 break;
             }
             case static_cast<uint8_t>(oe::MSG_TYPE::ERROR): {

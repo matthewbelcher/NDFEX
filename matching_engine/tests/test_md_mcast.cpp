@@ -14,7 +14,7 @@ protected:
 
         addr.sin_family = AF_INET;
         addr.sin_port = htons(12345);
-        addr.sin_addr.s_addr = inet_addr("239.1.3.37");
+        addr.sin_addr.s_addr = inet_addr("239.1.4.38");
         bind(read_sock, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr));
 
         // set read_sock to non-blocking
@@ -24,14 +24,19 @@ protected:
         }
         fcntl(read_sock, F_SETFL, flags | O_NONBLOCK);
 
+        // set multicast loopback
+        int loop = 1;
+        if (setsockopt(read_sock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop)) < 0) {
+            throw std::runtime_error("Failed to set multicast loopback");
+        }
+
         struct ip_mreq mreq;
-        mreq.imr_multiaddr.s_addr = inet_addr("239.1.3.37");
+        mreq.imr_multiaddr.s_addr = inet_addr("239.1.4.38");
         mreq.imr_interface.s_addr = inet_addr("127.0.0.1");
         if (setsockopt(read_sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&mreq, sizeof(mreq)) < 0)
         {
             throw std::runtime_error("Failed to join multicast group");
         }
-
     }
 
     void TearDown() override {
@@ -46,7 +51,7 @@ protected:
 TEST_F(MarketDataPublisherTest, NewOrder) {
 
     auto logger = spdlog::stdout_color_mt("test_logger_new_order");
-    MarketDataPublisher publisher("239.1.3.37", 12345, "127.0.0.1", logger);
+    MarketDataPublisher publisher("239.1.4.38", 12345, "127.0.0.1", logger);
     publisher.publish_new_order(1, 0, md::SIDE::BUY, 10, 50, 0);
 
     md::new_order msg;
@@ -70,7 +75,7 @@ TEST_F(MarketDataPublisherTest, NewOrder) {
 TEST_F(MarketDataPublisherTest, DeleteOrder) {
     auto logger = spdlog::stdout_color_mt("test_logger_delete_order");
 
-    MarketDataPublisher publisher("239.1.3.37", 12345, "127.0.0.1", logger);
+    MarketDataPublisher publisher("239.1.4.38", 12345, "127.0.0.1", logger);
     publisher.publish_delete_order(1);
 
     md::delete_order msg;
@@ -90,7 +95,7 @@ TEST_F(MarketDataPublisherTest, DeleteOrder) {
 TEST_F(MarketDataPublisherTest, ModifyOrder) {
     auto logger = spdlog::stdout_color_mt("test_logger_modify_order");
 
-    MarketDataPublisher publisher("239.1.3.37", 12345, "127.0.0.1", logger);
+    MarketDataPublisher publisher("239.1.4.38", 12345, "127.0.0.1", logger);
 
     publisher.publish_modify_order(1, md::SIDE::BUY, 10, 50);
 
@@ -113,7 +118,7 @@ TEST_F(MarketDataPublisherTest, ModifyOrder) {
 TEST_F(MarketDataPublisherTest, Trade) {
     auto logger = spdlog::stdout_color_mt("test_logger_trade");
 
-    MarketDataPublisher publisher("239.1.3.37", 12345, "127.0.0.1", logger);
+    MarketDataPublisher publisher("239.1.4.38", 12345, "127.0.0.1", logger);
 
     publisher.queue_trade(1, 10, 50);
 

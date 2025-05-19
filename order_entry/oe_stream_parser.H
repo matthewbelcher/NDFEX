@@ -5,6 +5,7 @@
 #pragma once
 
 #include "oe_protocol.H"
+#include <matching_engine/utils.H>
 #include <spdlog/logger.h>
 
 #include <cstdint>
@@ -13,6 +14,7 @@
 #include <sys/socket.h>
 
 #include <unordered_map>
+#include <deque>
 #include <iostream>
 #include <vector>
 #include <memory>
@@ -20,6 +22,8 @@
 
 
 namespace ndfex::oe {
+
+constexpr size_t MAX_MSGS_PER_SECOND = 1000;
 
 template<typename Handler>
 class StreamParser {
@@ -30,6 +34,23 @@ public:
     ~StreamParser() = default;
 
     void parse(int sock_fd, const char* buf, size_t len) {
+
+        uint64_t now = nanotime();
+        auto& timestamps = sock_to_msg_timestamps[sock_fd];
+
+        // Remove timestamps older than 1 second
+        while (!timestamps.empty() && (now - timestamps.front()) > 1e9) {
+            timestamps.pop_front();
+        }
+
+        if (timestamps.size() > MAX_MSGS_PER_SECOND) {
+            std::cout << "Too many messages per second from client sock " << sock_fd << std::endl;
+            send_error_msg(sock_fd, 0, 0, REJECT_REASON::INVALID_ORDER,
+                           "Too many messages per second");
+            logger->warn("Too many messages per second from client sock {}", sock_fd);
+            logger->flush();
+            return;
+        }
 
         // If we have a partial message for this socket, append the new data to it
         auto& partial_message = sock_to_partial_messages[sock_fd];
@@ -52,7 +73,7 @@ public:
             if (header->length > MAX_OE_MESSAGE_SIZE) {
                 // message too large
                 // send an error message back to the client and close the socket
-                logger->warn("Message too large: {} from client sock {}", header->length, sock_fd);
+                logger->warn("Message too large: {} from client sock {}", static_cast<uint16_t>(header->length), sock_fd);
                 logger->flush();
 
                 send_error_msg(sock_fd, header->seq_num, header->client_id, REJECT_REASON::INVALID_ORDER, "Message too large");
@@ -68,21 +89,25 @@ public:
                 case static_cast<uint8_t>(MSG_TYPE::NEW_ORDER): {
                     new_order* msg = reinterpret_cast<new_order*>(partial_message.data());
                     handler.on_new_order(sock_fd, *msg);
+                    timestamps.push_back(now);
                     break;
                 }
                 case static_cast<uint8_t>(MSG_TYPE::DELETE_ORDER): {
                     delete_order* msg = reinterpret_cast<delete_order*>(partial_message.data());
                     handler.on_delete_order(sock_fd, *msg);
+                    timestamps.push_back(now);
                     break;
                 }
                 case static_cast<uint8_t>(MSG_TYPE::MODIFY_ORDER): {
                     modify_order* msg = reinterpret_cast<modify_order*>(partial_message.data());
                     handler.on_modify_order(sock_fd, *msg);
+                    timestamps.push_back(now);
                     break;
                 }
                 case static_cast<uint8_t>(MSG_TYPE::LOGIN): {
                     login* msg = reinterpret_cast<login*>(partial_message.data());
                     handler.on_login(sock_fd, *msg);
+                    timestamps.push_back(now);
                     break;
                 }
                 default: {
@@ -128,6 +153,7 @@ public:
 
     void new_socket(int sock_fd) {
         sock_to_partial_messages[sock_fd] = {};
+        sock_to_msg_timestamps[sock_fd].clear();
     }
 
 private:
@@ -135,6 +161,8 @@ private:
     Handler& handler;
     std::shared_ptr<spdlog::logger> logger;
     std::unordered_map<int, std::vector<char>> sock_to_partial_messages;
+
+    std::unordered_map<int, std::deque<uint64_t>> sock_to_msg_timestamps;
 
 };
 } // namespace ndfex::oe

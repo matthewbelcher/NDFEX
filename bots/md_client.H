@@ -17,15 +17,23 @@ namespace ndfex::bots {
 class MDClient {
 public:
 
+    class TradeSummaryListener {
+    public:
+        virtual void on_trade_summary(uint32_t symbol, uint32_t quantity, int32_t price, md::SIDE aggressor_side) = 0;
+    };
+
     MDClient(std::string live_ip, uint16_t live_port,
             std::string snapshot_ip, uint16_t snapshot_port,
-            std::string bind_ip, std::shared_ptr<spdlog::logger> logger);
+            std::string bind_ip, std::shared_ptr<spdlog::logger> logger,
+            bool recover_on_drops = false);
 
     ~MDClient();
 
     void wait_for_snapshot();
 
     void process();
+
+    void register_trade_summary_listener(TradeSummaryListener* listener);
 
     OrderBook::PriceLevel get_best_bid(uint32_t symbol) const;
     OrderBook::PriceLevel get_best_ask(uint32_t symbol) const;
@@ -51,9 +59,13 @@ private:
     std::string snapshot_ip;
     std::string bind_ip;
 
+    const bool recover_on_drops;
+
     void process_message(uint8_t* buf, size_t len);
 
     uint32_t get_first_live_seq_num() const;
+
+    TradeSummaryListener* trade_summary_listener = nullptr;
 };
 
 } // namespace ndfex::bots

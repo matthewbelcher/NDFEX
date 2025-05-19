@@ -4,6 +4,7 @@
 #include "md_mcast.H"
 #include "oe_protocol.H"
 #include "order_ladder.H"
+#include "clearing_mcast.H"
 #include "utils.H"
 
 #include <spdlog/logger.h>
@@ -24,8 +25,10 @@ public:
 
     MatchingEngineBroker(SPSCOEQueue& to_client, SPSCOEQueue& from_client,
         MarketDataPublisher& publisher,
+        clearing::ClearingPublisher& clearing_publisher,
         std::shared_ptr<spdlog::logger> logger)
-        : to_client(to_client), from_client(from_client), publisher(publisher), logger(logger)
+        : to_client(to_client), from_client(from_client), publisher(publisher),
+        clearing_publisher(clearing_publisher), logger(logger)
     {}
 
     ~MatchingEngineBroker() {
@@ -55,7 +58,7 @@ public:
         to_client.emplace(oe::MSG_TYPE::ACK, order_id, symbol, client_seq, client_id, side, quantity, price, 0);
     }
 
-    void onDeleteOrder(uint64_t order_id, bool publish = true) {
+    void onDeleteOrder(uint64_t order_id, bool publish) {
         if (publish) {
             publisher.publish_delete_order(order_id);
             last_published_ts = nanotime();
@@ -73,8 +76,27 @@ public:
         last_published_ts = nanotime();
     }
 
-    void onFill(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) {
-        to_client.emplace(oe::MSG_TYPE::FILL, order_id, symbol, client_seq, client_id, side, quantity, price, flags);
+    void onFill(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, bool active) {
+        uint32_t client_seq_sent = active ? client_seq : 0;
+        uint32_t fill_client_id = client_id;
+
+        if (!active) {
+            // if the order was not active, we need to look up the client id from the order id
+            auto it = exch_order_id_to_client_id.find(order_id);
+            if (it != exch_order_id_to_client_id.end()) {
+                fill_client_id = it->second;
+            } else {
+                logger->error("Failed to find client id for order id {}", order_id);
+                throw std::runtime_error("Failed to find client id for order id " + std::to_string(order_id));
+            }
+        }
+
+        to_client.emplace(oe::MSG_TYPE::FILL, order_id, symbol, client_seq_sent, fill_client_id, side, quantity, price, flags);
+
+        logger->info("AUTH: Fill for order id {} client id {} symbol {} quantity {} price {} side {} flags {}",
+            order_id, fill_client_id, symbol, quantity, price, static_cast<uint8_t>(side), static_cast<uint8_t>(flags));
+
+        clearing_publisher.publish_fill(order_id, fill_client_id, symbol, quantity, price, side);
     }
 
     void finishedPacket(uint32_t symbol) {
@@ -99,6 +121,8 @@ public:
                     if (!ladder) {
                         throw std::runtime_error("Invalid symbol");
                     }
+
+                    exch_order_id_to_client_id[payload.exch_order_id] = payload.client_id;
 
                     aggressor_side = payload.side;
                     ladder->new_order(payload.exch_order_id, payload.side, payload.quantity, payload.price, payload.flags);
@@ -152,7 +176,10 @@ private:
     SPSCOEQueue& to_client;
     SPSCOEQueue& from_client;
     MarketDataPublisher& publisher;
+    clearing::ClearingPublisher& clearing_publisher;
+
     std::unordered_map<uint32_t, OrderLadder<MatchingEngineBroker>*> symbol_to_matching_engine;
+    std::unordered_map<uint32_t, uint32_t> exch_order_id_to_client_id;
 
     std::shared_ptr<spdlog::logger> logger;
 };

@@ -66,7 +66,7 @@ EpollServer<ClientHandler>::~EpollServer() {
 template <typename ClientHandler>
 void EpollServer<ClientHandler>::run() {
     while (true) {
-        int nfds = epoll_wait(epoll_fd, events, 16, 0);
+        int nfds = epoll_wait(epoll_fd, events, 32, 0);
         if (nfds == -1) {
             logger->error("Failed to wait on epoll: {}", strerror(errno));
             throw std::runtime_error("Failed to wait on epoll: " + std::string(strerror(errno)));
@@ -95,6 +95,12 @@ void EpollServer<ClientHandler>::run() {
 
                 if (fcntl(conn_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
                     throw std::runtime_error("Failed to set socket non-blocking flag: " + std::string(strerror(errno)));
+                }
+
+                // set keepalive on the socket
+                int keepalive = 1;
+                if (setsockopt(conn_fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive)) == -1) {
+                    throw std::runtime_error("Failed to set socket keepalive: " + std::string(strerror(errno)));
                 }
 
                 struct epoll_event ev;

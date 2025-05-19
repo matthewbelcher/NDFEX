@@ -7,9 +7,13 @@
 #include "fair_value.H"
 #include "random_walk_fair_value.H"
 #include "fair_value_mm.H"
+#include "fair_value_stack_mm.H"
 #include "random_taker.H"
 
 #include <spdlog/spdlog.h>
+#include <spdlog/async.h>
+#include <spdlog/sinks/daily_file_sink.h>
+
 #include <iostream>
 
 int main(int argc, char* argv[]) {
@@ -26,7 +30,7 @@ int main(int argc, char* argv[]) {
     std::string snapshot_ip = argv[4];
     std::string mcast_bind_ip = argv[5];
 
-    auto logger = spdlog::default_logger();
+    auto logger =  spdlog::daily_logger_mt<spdlog::async_factory>("async_logger", "logs/bot_runner");
 
     // create bots
     ndfex::bots::user_info user1 = {"test", "testuser", 99};
@@ -43,26 +47,32 @@ int main(int argc, char* argv[]) {
     };
 
     std::vector<ndfex::bots::FairValue*> fair_values{
-        new ndfex::bots::RandomWalkFairValue(120, symbols[0]),
-        new ndfex::bots::RandomWalkFairValue(50, symbols[1]),
+        new ndfex::bots::RandomWalkFairValue(1200, symbols[0]),
+        new ndfex::bots::RandomWalkFairValue(900, symbols[1]),
     };
 
     // create market data client
     ndfex::bots::MDClient md_client(mcast_ip, 12345, snapshot_ip, 12345, mcast_bind_ip, logger);
     md_client.wait_for_snapshot();
 
-    std::vector<std::vector<int32_t>> variances = { {0, 0}, {0, 0}, {1, 1}, {-1, -1}, {1, 0}, {2, 0}, {0, 2}, {3, 0} };
+    std::vector<std::vector<int32_t>> variances = { {0, 0}, {1, 1}, {-1, -1}, {1, 0}, {2, 0}, {0, 2}, {3, 0} };
 
     uint32_t last_order_id = 1;
     std::vector<ndfex::bots::FairValueMarketMaker> market_makers;
     for (size_t i = 0; i < variances.size(); i++) {
         market_makers.emplace_back(client1, md_client, fair_values, variances[i],
-            symbols, i < 3 ? 1 : 2, 100 - 10*i, last_order_id, logger);
+            symbols, i < 3 ? 2 : 3, 100 - 10*i, last_order_id, logger);
+    }
+
+    std::vector<ndfex::bots::FairValueStackingMarketMaker> stackers;
+    stackers.reserve(symbols.size());
+    for (const auto& symbol : symbols) {
+        stackers.emplace_back(client1, md_client, symbol, 1, 2, last_order_id, logger);
     }
 
     std::vector<ndfex::bots::RandomTaker*> takers;
     for (size_t i = 0; i < 4; i++) {
-        takers.push_back(new ndfex::bots::RandomTaker(client1, md_client, symbols, i+1, last_order_id, 1, logger));
+        takers.push_back(new ndfex::bots::RandomTaker(client1, md_client, symbols, i+1, last_order_id, 6+i, logger));
     }
 
     // process messages from the server
@@ -76,6 +86,10 @@ int main(int argc, char* argv[]) {
 
         for (auto taker : takers) {
             taker->process();
+        }
+
+        for (auto& stacker : stackers) {
+            stacker.process();
         }
     }
 

@@ -89,6 +89,11 @@ void SnapshotClient::process() {
         }
 
         uint32_t seq_num = header->seq_num;
+        if (seq_num != last_seq_num + 1 && last_seq_num != 0) {
+            logger->error("Out of order sequence number: {} (expected {})", seq_num, last_seq_num + 1);
+        }
+
+        last_seq_num = seq_num;
 
         switch (header->msg_type) {
             case md::MSG_TYPE::NEW_ORDER: {
