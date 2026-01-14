@@ -15,7 +15,6 @@
 
 #include <unordered_map>
 #include <deque>
-#include <iostream>
 #include <vector>
 #include <memory>
 #include <cstring>
@@ -44,7 +43,6 @@ public:
         }
 
         if (timestamps.size() > MAX_MSGS_PER_SECOND) {
-            std::cout << "Too many messages per second from client sock " << sock_fd << std::endl;
             send_error_msg(sock_fd, 0, 0, REJECT_REASON::INVALID_ORDER,
                            "Too many messages per second");
             logger->warn("Too many messages per second from client sock {}", sock_fd);

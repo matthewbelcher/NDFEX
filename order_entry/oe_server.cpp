@@ -114,7 +114,7 @@ void EpollServer<ClientHandler>::run() {
 
                 // if event was EPOLLRDHUP, the socket was closed
                 if (events[i].events & EPOLLRDHUP || events[i].events & EPOLLHUP) {
-                    logger->info("Socket {} closed on hup", events[i].data.fd);
+                    logger->info("Socket {} closed on hup", static_cast<int>(events[i].data.fd));
                     logger->flush();
                     close(events[i].data.fd);
                     parser.socket_closed(events[i].data.fd);
@@ -135,7 +135,7 @@ void EpollServer<ClientHandler>::run() {
                                 break;
                             }
                         } else if (len == 0) {
-                            logger->info("Socket {} closed", events[i].data.fd);
+                            logger->info("Socket {} closed", static_cast<int>(events[i].data.fd));
                             logger->flush();
                             close(events[i].data.fd);
                             parser.socket_closed(events[i].data.fd);

@@ -1,5 +1,5 @@
 CXX = clang++
-CXXFLAGS = -std=c++17 -Wall -Werror -I../../matching_engine -I../../spdlog/include -I../ -I/usr/local/include -I../../ -I../../SPSCQueue
+CXXFLAGS = -std=c++17 -Wall -Werror -I../../matching_engine -I../../3rdparty/spdlog/include -I../ -I/usr/local/include -I../../ -I../../3rdparty/SPSCQueue
 LDFLAGS = -L/usr/local/lib -lgtest -lgtest_main -pthread
 
 SRC_DIR = ../..
@@ -31,7 +31,7 @@ $(TARGET1): $(OBJ1)
 $(TARGET2): $(OBJ2)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 test: $(TARGET1) $(TARGET2)

@@ -15,7 +15,7 @@ RandomTaker::RandomTaker(OEClient& oe, MDClient& md,
     time_dist(10000000 * time_scale, 500000000 * time_scale) {}
 
 void RandomTaker::process() {
-    int64_t ts = nanotime();
+    uint64_t ts = nanotime();
     if (ts < last_ts) {
         return;
     }

@@ -14,7 +14,7 @@ namespace ndfex::bots {
     }
 
     void RestingOrders::process() {
-        int64_t ts = nanotime();
+        uint64_t ts = nanotime();
         if (ts < last_ts) {
             return;
         }

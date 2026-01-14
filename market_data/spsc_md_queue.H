@@ -1,6 +1,6 @@
 #pragma once
 
-#include "include/rigtorp/SPSCQueue.h"
+#include "rigtorp/SPSCQueue.h"
 #include "md_protocol.H"
 
 namespace ndfex {

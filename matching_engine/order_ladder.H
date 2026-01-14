@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <unordered_map>
 #include <map>
+#include <memory>
+#include <vector>
 #include <stdexcept>
 #include <iostream>
 
@@ -41,10 +43,46 @@ namespace ndfex {
     private:
 
         static const std::size_t INITIAL_ORDER_CAPACITY = 1e7;
+        static const std::size_t ORDER_POOL_BLOCK_SIZE = 4096;
 
-        std::unordered_map<uint64_t, Order> orders{INITIAL_ORDER_CAPACITY};
+        class OrderPool {
+        public:
+            Order* allocate() {
+                if (free_list.empty()) {
+                    add_block();
+                }
+                Order* order = free_list.back();
+                free_list.pop_back();
+                return order;
+            }
+
+            void deallocate(Order* order) {
+                if (!order) {
+                    return;
+                }
+                order->next = nullptr;
+                order->prev = nullptr;
+                free_list.push_back(order);
+            }
+
+        private:
+            void add_block() {
+                blocks.emplace_back(std::make_unique<Order[]>(ORDER_POOL_BLOCK_SIZE));
+                Order* block = blocks.back().get();
+                free_list.reserve(free_list.size() + ORDER_POOL_BLOCK_SIZE);
+                for (std::size_t i = 0; i < ORDER_POOL_BLOCK_SIZE; ++i) {
+                    free_list.push_back(&block[i]);
+                }
+            }
+
+            std::vector<std::unique_ptr<Order[]>> blocks;
+            std::vector<Order*> free_list;
+        };
+
+        std::unordered_map<uint64_t, Order*> orders{INITIAL_ORDER_CAPACITY};
         std::map<int32_t, PriceLevel, std::greater<int32_t>> buy_levels;
         std::map<int32_t, PriceLevel, std::less<int32_t>> sell_levels;
+        OrderPool order_pool;
 
         Subscriber* const subscriber;
         const uint32_t symbol;
@@ -132,21 +170,21 @@ namespace ndfex {
         }
 
         // create new order
-        Order& order = orders[order_id]; // create new order
-        order.order_id = order_id;
-        order.timestamp = 0;
-        order.quantity = quantity;
-        order.filled_quantity = prematch_quantity - quantity;
-        order.price = price;
-        order.side = side;
-        order.flags = flags;
-        order.next = nullptr;
-        order.prev = nullptr;
+        Order* order_ptr = order_pool.allocate();
+        order_ptr->order_id = order_id;
+        order_ptr->timestamp = 0;
+        order_ptr->quantity = quantity;
+        order_ptr->filled_quantity = prematch_quantity - quantity;
+        order_ptr->price = price;
+        order_ptr->side = side;
+        order_ptr->flags = flags;
+        order_ptr->next = nullptr;
+        order_ptr->prev = nullptr;
 
         auto it = price_levels.find(price);
         if (it == price_levels.end()) {
             // insert order into the ladder
-            price_levels.insert({price, {&order, &order}});
+            price_levels.insert({price, {order_ptr, order_ptr}});
 
         } else {
             // add order to the end of the list
@@ -154,10 +192,12 @@ namespace ndfex {
                 throw std::runtime_error("Price level " + std::to_string(price) + " tail is nullptr");
             }
 
-            it->second.tail->next = &orders[order_id];
-            orders[order_id].prev = it->second.tail;
-            it->second.tail = &orders[order_id];
+            it->second.tail->next = order_ptr;
+            order_ptr->prev = it->second.tail;
+            it->second.tail = order_ptr;
         }
+
+        orders.emplace(order_id, order_ptr);
     }
 
     template <typename Subscriber>
@@ -169,13 +209,13 @@ namespace ndfex {
             return;
         }
 
-        if (price_levels.find(it->second.price) == price_levels.end()) {
-            throw std::runtime_error("Price level " + std::to_string(it->second.price) + " for this order "
+        if (price_levels.find(it->second->price) == price_levels.end()) {
+            throw std::runtime_error("Price level " + std::to_string(it->second->price) + " for this order "
                 + std::to_string(order_id) + " does not exist");
         }
 
-        PriceLevel& price_level = price_levels[it->second.price];
-        Order& order = it->second;
+        PriceLevel& price_level = price_levels[it->second->price];
+        Order& order = *it->second;
         if (price_level.head == &order) {
             price_level.head = order.next;
         }
@@ -193,6 +233,7 @@ namespace ndfex {
         }
 
         orders.erase(order_id);
+        order_pool.deallocate(&order);
     }
 
     template <typename Subscriber>
@@ -204,8 +245,8 @@ namespace ndfex {
             return;
         }
 
-        int32_t price = it->second.price;
-        if (it->second.side == md::SIDE::BUY) {
+        int32_t price = it->second->price;
+        if (it->second->side == md::SIDE::BUY) {
             handle_delete_order(order_id, buy_levels);
             if (buy_levels.find(price) != buy_levels.end() && buy_levels[price].head == nullptr) {
                 buy_levels.erase(price);
@@ -230,25 +271,26 @@ namespace ndfex {
             return;
         }
 
-        if (it->second.filled_quantity >= quantity) {
+        if (it->second->filled_quantity >= quantity) {
             delete_order<true>(order_id);
             return;
         }
 
-        if (it->second.price == price && it->second.side == side) {
+        if (it->second->price == price && it->second->side == side) {
             // price has not changed
-            it->second.quantity = quantity;
-            subscriber->onModifyOrder(order_id, symbol, side, quantity - it->second.filled_quantity, price);
+            it->second->quantity = quantity;
+            subscriber->onModifyOrder(order_id, symbol, side, quantity - it->second->filled_quantity, price);
             return;
         }
 
-        uint32_t pre_modify_filled_quantity = it->second.filled_quantity;
+        uint32_t pre_modify_filled_quantity = it->second->filled_quantity;
+        uint8_t flags = it->second->flags;
 
         delete_order<false>(order_id);
-        if (it->second.side == md::SIDE::BUY) {
-            handle_new_order(order_id, side, quantity, price, it->second.flags, buy_levels, false, pre_modify_filled_quantity);
+        if (side == md::SIDE::BUY) {
+            handle_new_order(order_id, side, quantity, price, flags, buy_levels, false, pre_modify_filled_quantity);
         } else {
-            handle_new_order(order_id, side, quantity, price, it->second.flags, sell_levels, false, pre_modify_filled_quantity);
+            handle_new_order(order_id, side, quantity, price, flags, sell_levels, false, pre_modify_filled_quantity);
         }
 
         if (quantity > 0) {
@@ -297,7 +339,7 @@ namespace ndfex {
                     subscriber->onFill(incoming_order_id, symbol, side, quantity, order->price,
                                        static_cast<uint8_t>(oe::FILL_FLAGS::CLOSED), true);
 
-                    order->filled_quantity = quantity;
+                    order->filled_quantity += quantity;
                     order->quantity -= quantity;
                     quantity = 0;
                     return;

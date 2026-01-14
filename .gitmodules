@@ -1,9 +1,16 @@
-[submodule "SPSCQueue"]
-	path = SPSCQueue
-	url = git@github.com:rigtorp/SPSCQueue.git
 [submodule "spdlog"]
-	path = spdlog
-	url = git@github.com:gabime/spdlog
+	path = 3rdparty/spdlog
+	url = https://github.com/gabime/spdlog.git
+	branch = v1.17.0
+[submodule "SPSCQueue"]
+	path = 3rdparty/SPSCQueue
+	url = https://github.com/rigtorp/SPSCQueue.git
+	branch = v1.1
 [submodule "FTXUI"]
-	path = FTXUI
-	url = git@github.com:ArthurSonzogni/FTXUI.git
+	path = 3rdparty/FTXUI
+	url = https://github.com/ArthurSonzogni/FTXUI.git
+	branch = v6.1.9
+[submodule "websocketpp"]
+	path = 3rdparty/websocketpp
+	url = https://github.com/zaphoyd/websocketpp.git
+	branch = 0.8.2

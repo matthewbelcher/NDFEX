@@ -27,10 +27,11 @@ int32_t RandomWalkFairValue::process(uint64_t ts) {
 
     int32_t change = walk_value(gen);
     fair_value += change;
-    if (fair_value < min_price + 5 * tick_size) {
-        fair_value = min_price + 5 * tick_size;
-    } else if (fair_value > max_price - 5 * tick_size) {
-        fair_value = max_price - 5 * tick_size;
+    const int32_t tick_step = static_cast<int32_t>(tick_size) * 5;
+    if (fair_value < min_price + tick_step) {
+        fair_value = min_price + tick_step;
+    } else if (fair_value > max_price - tick_step) {
+        fair_value = max_price - tick_step;
     }
 
     // step forward a random amount of time

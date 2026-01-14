@@ -167,7 +167,7 @@ void OEClient::process() {
     while (buffer.size() >= sizeof(oe::oe_response_header)) {
         oe::oe_response_header header = *reinterpret_cast<oe::oe_response_header*>(buffer.data());
 
-        logger->info("Received exch msg: {} {}", (int) header.msg_type, header.seq_num);
+        logger->info("Received exch msg: {} {}", static_cast<int>(header.msg_type), static_cast<uint32_t>(header.seq_num));
 
         switch (header.msg_type) {
             case static_cast<uint8_t>(oe::MSG_TYPE::ACK): {
@@ -176,7 +176,7 @@ void OEClient::process() {
                 }
 
                 oe::order_ack ack = *reinterpret_cast<oe::order_ack*>(buffer.data());
-                logger->info("Received ack for order id: {} {}", ack.order_id, ack.exch_order_id);
+                logger->info("Received ack for order id: {} {}", static_cast<uint64_t>(ack.order_id), static_cast<uint64_t>(ack.exch_order_id));
                 break;
             }
             case static_cast<uint8_t>(oe::MSG_TYPE::REJECT): {
@@ -184,7 +184,7 @@ void OEClient::process() {
                     return;
                 }
                 oe::order_reject reject = *reinterpret_cast<oe::order_reject*>(buffer.data());
-                logger->warn("Received reject for order id: {} reason: {}", reject.order_id, static_cast<int>(reject.reject_reason));
+                logger->warn("Received reject for order id: {} reason: {}", static_cast<uint64_t>(reject.order_id), static_cast<int>(reject.reject_reason));
                 break;
             }
             case static_cast<uint8_t>(oe::MSG_TYPE::CLOSE): {
@@ -193,7 +193,7 @@ void OEClient::process() {
                 }
                 oe::order_closed closed = *reinterpret_cast<oe::order_closed*>(buffer.data());
                 open_orders.erase(closed.order_id);
-                logger->info("Received close message for order id: {}", closed.order_id);
+                logger->info("Received close message for order id: {}", static_cast<uint64_t>(closed.order_id));
                 break;
             }
             case static_cast<uint8_t>(oe::MSG_TYPE::FILL): {
@@ -201,7 +201,7 @@ void OEClient::process() {
                     return;
                 }
                 oe::order_fill fill = *reinterpret_cast<oe::order_fill*>(buffer.data());
-                logger->info("Received fill for order id: {} quantity: {} price: {}", fill.order_id, fill.quantity, fill.price);
+                logger->info("Received fill for order id: {} quantity: {} price: {}", static_cast<uint64_t>(fill.order_id), static_cast<uint32_t>(fill.quantity), static_cast<int32_t>(fill.price));
                 open_order& order = open_orders[fill.order_id];
                 if (order.side == md::SIDE::BUY) {
                     positions[order.symbol] += fill.quantity;
@@ -220,8 +220,8 @@ void OEClient::process() {
                 break;
             }
             default:
-                logger->warn("Unknown message type: {}", header.msg_type);
-                throw std::runtime_error("Unknown message type " + std::to_string(header.msg_type));
+                logger->warn("Unknown message type: {}", static_cast<int>(header.msg_type));
+                throw std::runtime_error("Unknown message type " + std::to_string(static_cast<int>(header.msg_type)));
                 break;
         }
         buffer.erase(buffer.begin(), buffer.begin() + header.length);

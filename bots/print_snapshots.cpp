@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
         }
         ssize_t buf_ptr = 0;
         while (len > 0) {
-            if (len < sizeof(md_header)) {
+            if (len < static_cast<ssize_t>(sizeof(md_header))) {
                 std::cerr << "Message too short: " << len << std::endl;
                 return 1;
             }

@@ -7,6 +7,9 @@ OrderEntryValidator::OrderEntryValidator(std::unordered_map<uint32_t, symbol_def
 }
 
 REJECT_REASON OrderEntryValidator::validate_new_order(uint64_t order_id, uint32_t symbol, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) {
+    (void)order_id;
+    (void)side;
+    (void)flags;
     auto it = symbols.find(symbol);
     if (it == symbols.end()) {
         logger->error("Symbol {} not found", symbol);

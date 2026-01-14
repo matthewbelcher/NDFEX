@@ -15,7 +15,7 @@ PressureTaker::PressureTaker(OEClient& oe, MDClient& md,
     }
 
 void PressureTaker::process() {
-    int64_t ts = nanotime();
+    uint64_t ts = nanotime();
     if (ts < last_ts) {
         return;
     }

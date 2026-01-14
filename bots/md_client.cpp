@@ -125,7 +125,7 @@ void MDClient::wait_for_snapshot() {
 
             md::md_header* header = reinterpret_cast<md::md_header*>(buf + buf_offset);
             if (header->magic_number != md::SNAPSHOT_MAGIC_NUMBER) {
-                logger->error("Invalid magic number: {}", header->magic_number);
+                logger->error("Invalid magic number: {}", static_cast<uint64_t>(header->magic_number));
                 throw std::runtime_error("Invalid magic number");
             }
 
@@ -133,7 +133,7 @@ void MDClient::wait_for_snapshot() {
                 // we started receiving a snapshot
                 md::snapshot_info* snapshot_info = reinterpret_cast<md::snapshot_info*>(buf + buf_offset);
                 if (snapshot_info->last_md_seq_num <= get_first_live_seq_num()) {
-                    logger->info("Skipping snapshot: last_md_seq_num={}, first_live_seq_num={}", snapshot_info->last_md_seq_num, get_first_live_seq_num());
+                    logger->info("Skipping snapshot: last_md_seq_num={}, first_live_seq_num={}", static_cast<uint32_t>(snapshot_info->last_md_seq_num), get_first_live_seq_num());
                     snapshot_len = 0;
                     continue;
                 }
@@ -143,8 +143,11 @@ void MDClient::wait_for_snapshot() {
                 symbol_to_ask_orders[snapshot_info->symbol] = snapshot_info->ask_count;
                 snapshot_buffer[snapshot_info->symbol].clear(); // clear the buffer before starting a new snapshot
 
-                logger->info("Snapshot info: symbol={}, bid_count={}, ask_count={}, last_md_seq_num={}", snapshot_info->symbol, snapshot_info->bid_count,
-                            snapshot_info->ask_count, snapshot_info->last_md_seq_num);
+                logger->info("Snapshot info: symbol={}, bid_count={}, ask_count={}, last_md_seq_num={}",
+                            static_cast<uint32_t>(snapshot_info->symbol),
+                            static_cast<uint32_t>(snapshot_info->bid_count),
+                            static_cast<uint32_t>(snapshot_info->ask_count),
+                            static_cast<uint32_t>(snapshot_info->last_md_seq_num));
 
                 if (symbol_to_bid_orders[snapshot_info->symbol] == 0 && symbol_to_ask_orders[snapshot_info->symbol] == 0) {
                     snapshot_complete[snapshot_info->symbol] = true;
@@ -158,7 +161,12 @@ void MDClient::wait_for_snapshot() {
                 } else {
                     --symbol_to_ask_orders[new_order->symbol];
                 }
-                logger->info("Snapshot order: id={}, symbol={}, side={}, quantity={}, price={}", new_order->order_id, new_order->symbol, static_cast<int>(new_order->side), new_order->quantity, new_order->price);
+                logger->info("Snapshot order: id={}, symbol={}, side={}, quantity={}, price={}",
+                            static_cast<uint64_t>(new_order->order_id),
+                            static_cast<uint32_t>(new_order->symbol),
+                            static_cast<int>(new_order->side),
+                            static_cast<uint32_t>(new_order->quantity),
+                            static_cast<int32_t>(new_order->price));
                 snapshot_buffer[new_order->symbol].push_back(*new_order);
 
                 if (symbol_to_bid_orders[new_order->symbol] == 0 && symbol_to_ask_orders[new_order->symbol] == 0) {
@@ -253,12 +261,12 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
 
         md::md_header* header = reinterpret_cast<md::md_header*>(buf);
         if (header->magic_number != md::MAGIC_NUMBER) {
-            logger->error("Invalid magic number: {}", header->magic_number);
+            logger->error("Invalid magic number: {}", static_cast<uint64_t>(header->magic_number));
             return;
         }
 
         if (header->seq_num > last_md_seq_num + 1) {
-            logger->error("Sequence number out of order: expected={}, got={}", last_md_seq_num + 1, header->seq_num);
+            logger->error("Sequence number out of order: expected={}, got={}", last_md_seq_num + 1, static_cast<uint32_t>(header->seq_num));
 
             if (recover_on_drops) {
                 logger->info("Restarting snapshot recovery process");
@@ -277,7 +285,7 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
             return;
 
         } else if (header->seq_num <= last_md_seq_num) {
-            logger->info("Skipping message with sequence number: {}", header->seq_num);
+            logger->info("Skipping message with sequence number: {}", static_cast<uint32_t>(header->seq_num));
             len -= header->length;
             buf += header->length;
             continue;
@@ -311,7 +319,7 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
                 md::delete_order* delete_order = reinterpret_cast<md::delete_order*>(buf);
                 uint32_t symbol = order_to_symbol[delete_order->order_id];
                 if (symbol_to_order_book.find(symbol) == symbol_to_order_book.end()) {
-                    logger->error("Symbol not found for order: {}", delete_order->order_id);
+                    logger->error("Symbol not found for order: {}", static_cast<uint64_t>(delete_order->order_id));
                     return;
                 }
 
@@ -328,7 +336,7 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
                 md::modify_order* modify_order = reinterpret_cast<md::modify_order*>(buf);
                 uint32_t symbol = order_to_symbol[modify_order->order_id];
                 if (symbol_to_order_book.find(symbol) == symbol_to_order_book.end()) {
-                    logger->error("Symbol not found for order: {}", modify_order->order_id);
+                    logger->error("Symbol not found for order: {}", static_cast<uint64_t>(modify_order->order_id));
                     return;
                 }
                 //logger->info("Modify order: order_id={}, side={}, quantity={}, price={}", modify_order->order_id, static_cast<int>(modify_order->side), modify_order->quantity, modify_order->price);
@@ -343,13 +351,13 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
 
                 md::trade* trade = reinterpret_cast<md::trade*>(buf);
                 if (order_to_symbol.find(trade->order_id) == order_to_symbol.end()) {
-                    logger->error("Order ID not found: {}", trade->order_id);
+                    logger->error("Order ID not found: {}", static_cast<uint64_t>(trade->order_id));
                     return;
                 }
 
                 uint32_t symbol = order_to_symbol[trade->order_id];
                 if (symbol_to_order_book.find(symbol) == symbol_to_order_book.end()) {
-                    logger->error("Symbol not found for order: {}", trade->order_id);
+                    logger->error("Symbol not found for order: {}", static_cast<uint64_t>(trade->order_id));
                     return;
                 }
     //            logger->info("Trade: order_id={}, quantity={}, price={}", trade->order_id, trade->quantity, trade->price);
@@ -364,7 +372,7 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
 
                 md::trade_summary* trade_summary = reinterpret_cast<md::trade_summary*>(buf);
                 if (symbol_to_order_book.find(trade_summary->symbol) == symbol_to_order_book.end()) {
-                    logger->error("Symbol not found for trade summary: {}", trade_summary->symbol);
+                    logger->error("Symbol not found for trade summary: {}", static_cast<uint32_t>(trade_summary->symbol));
                     return;
                 }
 

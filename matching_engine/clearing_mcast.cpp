@@ -58,6 +58,7 @@ namespace ndfex::clearing {
     }
 
     void ClearingPublisher::publish_fill(uint64_t order_id, uint32_t client_id, uint32_t symbol, uint32_t quantity, int32_t price, md::SIDE side) {
+        (void)order_id;
         fill_msg.header.length = sizeof(fill);
         fill_msg.header.msg_type = MSG_TYPE::FILL;
         fill_msg.header.seq_num++;

@@ -46,3 +46,15 @@
 */out/
 
 .vscode/
+build/
+build-ndfex/
+.pids/
+
+# Local built binaries (Makefile outputs)
+matching_engine/out/
+market_data/md_snapshots
+bots/out/
+viewer/md_viewer
+viewer/bbo_printer
+viewer/pcap_printer
+logs/

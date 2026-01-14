@@ -42,6 +42,9 @@ class OEClientHandlerTest : public ::testing::Test {
 protected:
 
     void SetUp() override {
+        logger->set_level(spdlog::level::critical);
+        logger->flush_on(spdlog::level::critical);
+
         auto& user = users["good"];
         user.username = "good";
         user.password = "password";

@@ -135,7 +135,9 @@ export default function Home() {
 
       // Connect to our proxy instead of directly to the WebSocket server
       // This avoids CORS issues
-      socketRef.current = new WebSocket('ws://129.74.160.245:9002');
+      const wsHost = process.env.NEXT_PUBLIC_WS_HOST || 'localhost';
+      const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '9002';
+      socketRef.current = new WebSocket(`ws://${wsHost}:${wsPort}`);
 
       // Connection opened
       socketRef.current.addEventListener("open", event => {
@@ -149,7 +151,9 @@ export default function Home() {
       socketRef.current.addEventListener("error", event => {
         console.error("WebSocket error:", event);
         setConnectionStatus('error');
-        setErrorMessage(`Connection failed. Check if server is running at ws://129.74.160.245:9002`);
+        const wsHost = process.env.NEXT_PUBLIC_WS_HOST || 'localhost';
+        const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '9002';
+        setErrorMessage(`Connection failed. Check if server is running at ws://${wsHost}:${wsPort}`);
 
         // Try to reconnect if we haven't exceeded max attempts
         if (reconnectAttempts < maxReconnectAttempts) {

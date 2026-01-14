@@ -12,6 +12,15 @@
 using namespace ndfex;
 using namespace oe;
 
+namespace {
+std::shared_ptr<spdlog::logger> make_test_logger(const std::string& name) {
+    auto logger = spdlog::stdout_color_mt(name);
+    logger->set_level(spdlog::level::critical);
+    logger->flush_on(spdlog::level::critical);
+    return logger;
+}
+} // namespace
+
 class MockHandler {
 public:
   std::vector<uint64_t> new_orders;
@@ -26,7 +35,7 @@ public:
 
 TEST(OEStreamParserTest, NewOrder) {
     MockHandler handler;
-    auto logger = spdlog::stdout_color_mt("test_logger_new_order");
+    auto logger = make_test_logger("test_logger_new_order");
     StreamParser<MockHandler> parser(handler, logger);
     oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
 
@@ -39,7 +48,7 @@ TEST(OEStreamParserTest, NewOrder) {
 
 TEST(OEStreamParserTest, NewOrderPartial) {
     MockHandler handler;
-    auto logger = spdlog::stdout_color_mt("test_logger_new_order_partial");
+    auto logger = make_test_logger("test_logger_new_order_partial");
     StreamParser<MockHandler> parser(handler, logger);
     oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
@@ -53,7 +62,7 @@ TEST(OEStreamParserTest, NewOrderPartial) {
 
 TEST(OEStreamParserTest, NewOrderMultiple) {
     MockHandler handler;
-    auto logger = spdlog::stdout_color_mt("test_logger_new_order_multiple");
+    auto logger = make_test_logger("test_logger_new_order_multiple");
     StreamParser<MockHandler> parser(handler, logger);
     oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
@@ -68,7 +77,7 @@ TEST(OEStreamParserTest, NewOrderMultiple) {
 
 TEST(OEStreamParserTest, NewOrderMultipleInSameBuffer) {
     MockHandler handler;
-    auto logger = spdlog::stdout_color_mt("test_logger_new_order_multiple_same_buffer");
+    auto logger = make_test_logger("test_logger_new_order_multiple_same_buffer");
     StreamParser<MockHandler> parser(handler, logger);
     oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
@@ -84,7 +93,7 @@ TEST(OEStreamParserTest, NewOrderMultipleInSameBuffer) {
 
 TEST(OEStreamParserTest, ErrorOnUnknownType) {
     MockHandler handler;
-    auto logger = spdlog::stdout_color_mt("test_logger_error_on_unknown_type");
+    auto logger = make_test_logger("test_logger_error_on_unknown_type");
     StreamParser<MockHandler> parser(handler, logger);
     oe_request_header header = {sizeof(new_order), 0, ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
@@ -115,7 +124,7 @@ TEST(OEStreamParserTest, ErrorOnUnknownType) {
 
 TEST(OEStreamParserTest, ErrorOnThrottleExceeded) {
     MockHandler handler;
-    auto logger = spdlog::stdout_color_mt("test_logger_error_on_throttle_exceeded");
+    auto logger = make_test_logger("test_logger_error_on_throttle_exceeded");
     StreamParser<MockHandler> parser(handler, logger);
     oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};

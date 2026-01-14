@@ -1,7 +1,7 @@
 #pragma once
 
 #include "order_entry/oe_protocol.H"
-#include "include/rigtorp/SPSCQueue.h"
+#include "rigtorp/SPSCQueue.h"
 
 namespace ndfex {
 

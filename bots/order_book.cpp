@@ -14,6 +14,8 @@ void OrderBook::print_levels(const PriceLevels &levels) {
 }
 
 void OrderBook::new_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, uint32_t filled_quantity) {
+    (void)flags;
+    (void)filled_quantity;
 //    logger->info("New order: id={}, side={}, quantity={}, price={}, flags={}, filled_quantity={}", order_id, static_cast<int>(side),
  //   quantity, price, flags, filled_quantity);
     orders.emplace(order_id, Order{side, price, quantity});
@@ -119,6 +121,7 @@ void OrderBook::modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity
 }
 
 void OrderBook::order_trade(uint64_t order_id, uint32_t quantity, int32_t price) {
+    (void)price;
     auto it = orders.find(order_id);
     if (it == orders.end()) {
         logger->warn("Trade Order {} not found", order_id);

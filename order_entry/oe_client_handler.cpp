@@ -18,16 +18,20 @@ void ClientHandler::on_login(int sock_fd, const login& msg) {
                  std::string(reinterpret_cast<const char*>(msg.username)));
 
     // validate username and password
-    auto it = users.find(std::string(reinterpret_cast<const char*>(msg.username)));
+    auto username = std::string(reinterpret_cast<const char*>(msg.username),
+                                strnlen(reinterpret_cast<const char*>(msg.username), sizeof(msg.username)));
+    auto password = std::string(reinterpret_cast<const char*>(msg.password),
+                                strnlen(reinterpret_cast<const char*>(msg.password), sizeof(msg.password)));
+
+    auto it = users.find(username);
     if (it == users.end()
-        || it->second.password != std::string(reinterpret_cast<const char*>(msg.password))
+        || it->second.password != password
         || it->second.client_id != msg.header.client_id) {
 
-        logger->warn("Invalid login attempt from client {} {}", msg.header.client_id,
-        std::string(reinterpret_cast<const char*>(msg.username)));
+        logger->warn("Invalid login attempt from client {} {}", msg.header.client_id, username);
 
         // send login response with status = 1
-        login_response response;
+        login_response response{};
         response.header.length = sizeof(login_response);
         response.header.msg_type = static_cast<uint8_t>(MSG_TYPE::LOGIN_RESPONSE);
         response.header.seq_num = msg.header.seq_num;
@@ -35,13 +39,17 @@ void ClientHandler::on_login(int sock_fd, const login& msg) {
 
         if (it == users.end()) {
             response.status = static_cast<uint8_t>(LOGIN_STATUS::INVALID_USERNAME);
-        } else if (it->second.password != std::string(reinterpret_cast<const char*>(msg.password))) {
+        } else if (it->second.password != password) {
             response.status = static_cast<uint8_t>(LOGIN_STATUS::INVALID_PASSWORD);
         } else {
             response.status = static_cast<uint8_t>(LOGIN_STATUS::INVALID_CLIENT_ID);
         }
 
-        ssize_t len = write_msg(sock_fd, response);
+        response.header.version = OE_PROTOCOL_VERSION;
+        response.header.last_seq_num = 0;
+        response.session_id = 0;
+
+        ssize_t len = ::write(sock_fd, &response, sizeof(login_response));
         // don't care if this send fails since we are closing the socket anyway
         (void) len;
 
@@ -70,12 +78,15 @@ void ClientHandler::on_login(int sock_fd, const login& msg) {
         logger->warn("Duplicate login attempt from client {}", msg.header.client_id);
 
         // send login response with status = 2
-        login_response response;
+        login_response response{};
         response.header.length = sizeof(login_response);
         response.header.msg_type = static_cast<uint8_t>(MSG_TYPE::LOGIN_RESPONSE);
         response.header.seq_num = msg.header.seq_num;
         response.header.client_id = msg.header.client_id;
         response.status = static_cast<uint8_t>(LOGIN_STATUS::SESSION_ALREADY_ACTIVE);
+        response.header.version = OE_PROTOCOL_VERSION;
+        response.header.last_seq_num = 0;
+        response.session_id = 0;
 
         ssize_t len = write(sock_fd, &response, sizeof(login_response));
         if (len == -1) {
@@ -100,19 +111,16 @@ void ClientHandler::on_login(int sock_fd, const login& msg) {
             log_network_send_error(other_fd, len);
         }
 
-        cancel_all_client_orders(msg.header.client_id);
-
+        on_socket_closed(other_fd);
         // close the other socket
         shutdown(other_fd, SHUT_RDWR);
         close(other_fd);
-
-        client_to_sock_fd.erase(msg.header.client_id);
         return;
     }
 
     // generate session id
     uint64_t session_id = dist(gen);
-    sock_to_session_info[sock_fd] = {session_id, msg.header.client_id, msg.header.seq_num};
+    sock_to_session_info[sock_fd] = {session_id, msg.header.client_id, msg.header.seq_num, 0};
     client_to_sock_fd[msg.header.client_id] = sock_fd;
 
     logger->info("Client {} logged in successfully with session id {}", msg.header.client_id, session_id);
@@ -131,8 +139,8 @@ void ClientHandler::on_login(int sock_fd, const login& msg) {
         // login was successful but we could not send a response, something went wrong
         log_network_send_error(sock_fd, len);
 
+        on_socket_closed(sock_fd);
         // close the socket
-        cancel_all_client_orders(msg.header.client_id);
         shutdown(sock_fd, SHUT_RDWR);
         close(sock_fd);
     }
@@ -355,6 +363,7 @@ void ClientHandler::write_msg_to_client(uint32_t client_id, uint32_t last_seq_nu
     if (len == -1) {
         log_network_send_error(sock_fd, len);
 
+        on_socket_closed(sock_fd);
         // close the socket
         shutdown(sock_fd, SHUT_RDWR);
         close(sock_fd);
@@ -383,7 +392,12 @@ ssize_t ClientHandler::write_msg(int sock_fd, Msg& msg) {
 
     ssize_t bytes_sent = 0;
     while (bytes_sent < msg.header.length) {
-        ssize_t n = ::send(sock_fd, reinterpret_cast<char*>(&msg) + bytes_sent, msg.header.length - bytes_sent, MSG_NOSIGNAL);
+        ssize_t n = ::send(sock_fd, reinterpret_cast<char*>(&msg) + bytes_sent,
+                           msg.header.length - bytes_sent, MSG_NOSIGNAL);
+        if (n == -1 && errno == ENOTSOCK) {
+            n = ::write(sock_fd, reinterpret_cast<char*>(&msg) + bytes_sent,
+                        msg.header.length - bytes_sent);
+        }
         if (n == -1) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 continue;
@@ -410,10 +424,12 @@ void ClientHandler::update_last_seq_num(int sock_fd, uint32_t seq_num) {
 }
 
 void ClientHandler::log_network_send_error(int sock_fd, ssize_t err) {
+    (void)err;
     logger->error("Failed to send message to client {}: {}", sock_fd, strerror(errno));
 }
 
 void ClientHandler::send_order_reject(int sock_fd, uint32_t seq_num, uint32_t client_id, uint8_t reason_code, uint64_t order_id) {
+    (void)sock_fd;
     logger->warn("Sending order reject to client {} seq {} reason {}", client_id, seq_num, static_cast<int>(reason_code));
 
     // send the reject message to the client via the broker so the sequence numbers are correct

@@ -147,8 +147,15 @@ public:
                 }
                 case oe::MSG_TYPE::REJECT: {
                     // these need to be sent back to the client
-                    to_client.emplace(payload.msg_type, payload.exch_order_id, payload.symbol, client_seq,
-                        payload.client_id, payload.side, payload.quantity, payload.price, payload.flags);
+                    const uint64_t exch_order_id = static_cast<uint64_t>(payload.exch_order_id);
+                    const uint32_t symbol = static_cast<uint32_t>(payload.symbol);
+                    const uint32_t client_id = static_cast<uint32_t>(payload.client_id);
+                    const md::SIDE side = static_cast<md::SIDE>(payload.side);
+                    const uint32_t quantity = static_cast<uint32_t>(payload.quantity);
+                    const uint32_t price = static_cast<uint32_t>(payload.price);
+                    const uint8_t flags = static_cast<uint8_t>(payload.flags);
+                    to_client.emplace(payload.msg_type, exch_order_id, symbol, client_seq,
+                        client_id, side, quantity, price, flags);
                     break;
                 }
                 case oe::MSG_TYPE::ERROR:

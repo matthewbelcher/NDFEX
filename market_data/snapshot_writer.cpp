@@ -66,7 +66,7 @@ void SnapshotWriter::process() {
         switch (payload.msg_type) {
             case md::MSG_TYPE::NEW_ORDER: {
                 if (symbol_to_bids.find(payload.symbol) == symbol_to_bids.end()) {
-                    logger->error("Symbol not found: {}", payload.symbol);
+                    logger->error("Symbol not found: {}", static_cast<uint32_t>(payload.symbol));
                     break;
                 }
 
@@ -84,7 +84,7 @@ void SnapshotWriter::process() {
             }
             case md::MSG_TYPE::DELETE_ORDER: {
                 if (order_to_symbol.find(payload.order_id) == order_to_symbol.end()) {
-                    logger->error("Order not found: {}", payload.order_id);
+                    logger->error("Order not found: {}", static_cast<uint64_t>(payload.order_id));
                     break;
                 }
                 uint32_t symbol = order_to_symbol[payload.order_id];
@@ -104,7 +104,7 @@ void SnapshotWriter::process() {
             }
             case md::MSG_TYPE::MODIFY_ORDER: {
                 if (order_to_symbol.find(payload.order_id) == order_to_symbol.end()) {
-                    logger->error("Order not found: {}", payload.order_id);
+                    logger->error("Order not found: {}", static_cast<uint64_t>(payload.order_id));
                     break;
                 }
 
@@ -152,13 +152,13 @@ void SnapshotWriter::process() {
                 }
 
                 // order not found
-                logger->error("Order not found for modify: {}", payload.order_id);
+                logger->error("Order not found for modify: {}", static_cast<uint64_t>(payload.order_id));
                 break;
 
             }
             case md::MSG_TYPE::TRADE: {
                 if (order_to_symbol.find(payload.order_id) == order_to_symbol.end()) {
-                    logger->error("Order not found for trade: {}", payload.order_id);
+                    logger->error("Order not found for trade: {}", static_cast<uint64_t>(payload.order_id));
                     break;
                 }
 
@@ -170,7 +170,7 @@ void SnapshotWriter::process() {
                 });
                 if (it != bid_orders.end()) {
                     if (it->quantity < payload.quantity) {
-                        logger->error("Trade quantity exceeds order quantity: {}", payload.order_id);
+                        logger->error("Trade quantity exceeds order quantity: {}", static_cast<uint64_t>(payload.order_id));
                         break;
                     }
                     it->quantity -= payload.quantity;
@@ -186,7 +186,7 @@ void SnapshotWriter::process() {
                 });
                 if (it != ask_orders.end()) {
                     if (it->quantity < payload.quantity) {
-                        logger->error("Trade quantity exceeds order quantity: {}", payload.order_id);
+                        logger->error("Trade quantity exceeds order quantity: {}", static_cast<uint64_t>(payload.order_id));
                         break;
                     }
                     it->quantity -= payload.quantity;

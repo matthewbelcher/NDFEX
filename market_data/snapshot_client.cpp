@@ -84,7 +84,7 @@ void SnapshotClient::process() {
     while (buf_len > 0) {
         md::md_header* header = reinterpret_cast<md::md_header*>(buf_ptr);
         if (header->magic_number != md::MAGIC_NUMBER) {
-            logger->error("Invalid magic number: {}", header->magic_number);
+            logger->error("Invalid magic number: {}", static_cast<uint64_t>(header->magic_number));
             return;
         }
 
@@ -103,7 +103,13 @@ void SnapshotClient::process() {
                 }
 
                 md::new_order* new_order = reinterpret_cast<md::new_order*>(buf_ptr);
-                queue.emplace(md::MSG_TYPE::NEW_ORDER, seq_num, new_order->order_id, new_order->symbol, new_order->side, new_order->quantity, new_order->price, new_order->flags);
+                const uint64_t order_id = static_cast<uint64_t>(new_order->order_id);
+                const uint32_t symbol = static_cast<uint32_t>(new_order->symbol);
+                const md::SIDE side = static_cast<md::SIDE>(new_order->side);
+                const uint32_t quantity = static_cast<uint32_t>(new_order->quantity);
+                const int32_t price = static_cast<int32_t>(new_order->price);
+                const uint8_t flags = static_cast<uint8_t>(new_order->flags);
+                queue.emplace(md::MSG_TYPE::NEW_ORDER, seq_num, order_id, symbol, side, quantity, price, flags);
                 break;
             }
             case md::MSG_TYPE::DELETE_ORDER: {
@@ -111,7 +117,8 @@ void SnapshotClient::process() {
                     logger->error("Message too short for delete order: {}", len);
                     return;
                 }
-                queue.emplace(md::MSG_TYPE::DELETE_ORDER, seq_num, reinterpret_cast<md::delete_order*>(buf_ptr)->order_id, 0, md::SIDE::BUY, 0, 0, 0);
+                const uint64_t order_id = static_cast<uint64_t>(reinterpret_cast<md::delete_order*>(buf_ptr)->order_id);
+                queue.emplace(md::MSG_TYPE::DELETE_ORDER, seq_num, order_id, 0, md::SIDE::BUY, 0, 0, 0);
                 break;
             }
             case md::MSG_TYPE::MODIFY_ORDER: {
@@ -121,7 +128,11 @@ void SnapshotClient::process() {
                 }
 
                 md::modify_order* modify_order = reinterpret_cast<md::modify_order*>(buf_ptr);
-                queue.emplace(md::MSG_TYPE::MODIFY_ORDER, seq_num, modify_order->order_id, 0, modify_order->side, modify_order->quantity, modify_order->price, 0);
+                const uint64_t order_id = static_cast<uint64_t>(modify_order->order_id);
+                const md::SIDE side = static_cast<md::SIDE>(modify_order->side);
+                const uint32_t quantity = static_cast<uint32_t>(modify_order->quantity);
+                const int32_t price = static_cast<int32_t>(modify_order->price);
+                queue.emplace(md::MSG_TYPE::MODIFY_ORDER, seq_num, order_id, 0, side, quantity, price, 0);
                 break;
             }
             case md::MSG_TYPE::TRADE: {
@@ -131,7 +142,10 @@ void SnapshotClient::process() {
                 }
 
                 md::trade* trade = reinterpret_cast<md::trade*>(buf_ptr);
-                queue.emplace(md::MSG_TYPE::TRADE, seq_num, trade->order_id, 0, md::SIDE::BUY, trade->quantity, trade->price, 0);
+                const uint64_t order_id = static_cast<uint64_t>(trade->order_id);
+                const uint32_t quantity = static_cast<uint32_t>(trade->quantity);
+                const int32_t price = static_cast<int32_t>(trade->price);
+                queue.emplace(md::MSG_TYPE::TRADE, seq_num, order_id, 0, md::SIDE::BUY, quantity, price, 0);
                 break;
             }
             case md::MSG_TYPE::TRADE_SUMMARY: {
