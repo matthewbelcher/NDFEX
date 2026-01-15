@@ -49,6 +49,8 @@
 build/
 build-ndfex/
 .pids/
+*/CMakeFiles/*
+**/CMakeFiles/
 
 
 # Local built binaries (Makefile outputs)

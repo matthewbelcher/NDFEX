@@ -1,1 +1,0 @@
-/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/md_snapshots.dir/link.d CMakeFiles/md_snapshots.dir/md_snapshots.cpp.o CMakeFiles/md_snapshots.dir/snapshot_client.cpp.o CMakeFiles/md_snapshots.dir/snapshot_writer.cpp.o CMakeFiles/md_snapshots.dir/__/matching_engine/utils.cpp.o -o ../bin/md_snapshots

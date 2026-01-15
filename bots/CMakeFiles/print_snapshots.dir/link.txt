@@ -1,1 +1,0 @@
-/usr/bin/c++ -Wl,--dependency-file=CMakeFiles/print_snapshots.dir/link.d CMakeFiles/print_snapshots.dir/print_snapshots.cpp.o -o ../bin/print_snapshots
