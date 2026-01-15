@@ -60,19 +60,19 @@ This project is intended for the course on High-Frequency Trading Technologies a
 
 ## Prerequisites
 
-### Required Dependencies
+### Required Dependencies (Linux)
 
 - **CMake**: Version 3.16 or higher
 - **Compiler**: `clang++` or `g++` with C++17 support
 - **spdlog**: Logging library (included as git submodule)
 - **SPSCQueue**: Lock-free queue (included as git submodule)
-- **GoogleTest**: For running tests (`brew install googletest` on macOS)
+- **pthread**: Provided by glibc on Linux
 
 ### Optional Dependencies
 
 - **FTXUI**: Terminal UI library for `md_viewer` (included as git submodule, requires building)
 - **websocketpp**: WebSocket library for `web_data`
-- **libpcap**: For `pcap_printer` tool (`brew install libpcap` on macOS)
+- **libpcap**: For `pcap_printer` tool (Linux package, optional)
 - **Node.js**: For the clearing web app
 
 ### Installing Dependencies
@@ -87,13 +87,7 @@ git clone --recursive https://github.com/matthewbelcher/NDFEX.git
 git submodule update --init --recursive
 
 # Build FTXUI (required for viewer)
-cd FTXUI && mkdir build && cd build && cmake .. && make && cd ../..
-
-# For tests (macOS)
-brew install googletest
-
-# For viewer (macOS)
-brew install libpcap
+cd 3rdparty/FTXUI && mkdir build && cd build && cmake .. && make && cd ../../..
 
 # For web app
 cd clearing-web-app && npm install
@@ -144,14 +138,14 @@ cmake -DBUILD_VIEWER=ON -DBUILD_WEB_DATA=ON -DBUILD_TESTS=ON ..
 ### Building FTXUI (for viewer)
 
 ```bash
-cd FTXUI
+cd 3rdparty/FTXUI
 mkdir build && cd build
 cmake ..
 make -j$(nproc)
-cd ../..
+cd ../../..
 ```
 
-### Running Tests
+### Running Tests (Linux)
 
 ```bash
 cd build
@@ -175,7 +169,7 @@ After building, executables are located in `build/bin/`:
 | `print_snapshots` | Snapshot printing utility |
 | `md_viewer` | Terminal UI viewer (optional) |
 | `bbo_printer` | BBO printer (optional) |
-| `pcap_printer` | PCAP printer (optional) |
+| `pcap_printer` | PCAP printer (optional, Linux only) |
 | `web_data` | WebSocket server (optional) |
 
 ### Clean Build
@@ -191,8 +185,8 @@ rm -rf build
 The easiest way to run NDFEX is using the control script:
 
 ```bash
-# Create users file first
-echo "99 testuser test" > users.txt
+# Create users file first (ndfex.sh runs from matching_engine/)
+echo "99 test testuser" > matching_engine/users.txt
 
 # Start all components
 ./ndfex.sh start
@@ -245,7 +239,7 @@ The matching engine reads user credentials from `users.txt` in the working direc
 
 ```bash
 # Format: client_id username password
-echo "99 testuser test" > users.txt
+echo "99 test testuser" > users.txt
 echo "1 student1 password1" >> users.txt
 ```
 
@@ -266,10 +260,10 @@ Arguments:
 #### 3. Start Market Data Snapshot Service
 
 ```bash
-./build/bin/md_snapshots <listen_ip> <listen_port> <snapshot_mcast_ip> <mcast_port> <mcast_bind_ip>
+./build/bin/md_snapshots <md_mcast_ip> <md_port> <snapshot_mcast_ip> <snapshot_port> <mcast_bind_ip>
 
 # Example:
-./build/bin/md_snapshots 127.0.0.1 12345 239.0.0.1 12345 127.0.0.1
+./build/bin/md_snapshots 239.0.0.1 12345 239.0.0.3 12345 127.0.0.1
 ```
 
 #### 4. Start Trading Bots
@@ -278,7 +272,7 @@ Arguments:
 ./build/bin/bot_runner <oe_ip> <oe_port> <mcast_ip> <snapshot_ip> <mcast_bind_ip>
 
 # Example:
-./build/bin/bot_runner 127.0.0.1 1234 239.0.0.1 127.0.0.1 127.0.0.1
+./build/bin/bot_runner 127.0.0.1 1234 239.0.0.1 239.0.0.3 127.0.0.1
 ```
 
 #### 5. Optional: Start Viewer
@@ -287,14 +281,17 @@ Arguments:
 ./build/bin/md_viewer <mcast_ip> <snapshot_ip> <mcast_bind_ip>
 
 # Example:
-./build/bin/md_viewer 239.0.0.1 127.0.0.1 127.0.0.1
+./build/bin/md_viewer 239.0.0.1 239.0.0.3 127.0.0.1
 ```
 
 #### 6. Optional: Start Web Interface
 
 ```bash
 # Terminal 1: Start web data server
-./build/bin/web_data <md_mcast_ip> <snapshot_ip> <clearing_mcast_ip> <mcast_bind_ip>
+./build/bin/web_data <md_mcast_ip> <snapshot_mcast_ip> <clearing_mcast_ip> <mcast_bind_ip>
+
+# Example:
+./build/bin/web_data 239.0.0.1 239.0.0.3 239.0.0.2 127.0.0.1
 
 # Terminal 2: Start Next.js web app
 cd clearing-web-app
@@ -325,7 +322,7 @@ The exchange supports the following symbols by default:
 
 This section captures the current lab setup and the single-script workflow.
 
-### Build with clang (local Makefiles)
+### Build with clang (local Makefiles, Linux)
 
 The lab build uses the per-component Makefiles (clang).
 
@@ -423,9 +420,9 @@ NDFEX/
 │   └── CMakeLists.txt
 ├── clearing-web-app/    # Next.js web dashboard
 │   └── package.json
-├── spdlog/              # Logging library (git submodule)
-├── 3rdparty/SPSCQueue/           # Lock-free queue library (git submodule)
-├── FTXUI/               # Terminal UI library (git submodule)
+├── 3rdparty/spdlog/      # Logging library (git submodule)
+├── 3rdparty/SPSCQueue/   # Lock-free queue library (git submodule)
+├── 3rdparty/FTXUI/       # Terminal UI library (git submodule)
 ├── build/               # Build output directory (created by cmake)
 │   └── bin/             # Compiled executables
 └── README.md

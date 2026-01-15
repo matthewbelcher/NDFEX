@@ -50,6 +50,7 @@ build/
 build-ndfex/
 .pids/
 
+
 # Local built binaries (Makefile outputs)
 matching_engine/out/
 market_data/md_snapshots
@@ -58,3 +59,7 @@ viewer/md_viewer
 viewer/bbo_printer
 viewer/pcap_printer
 logs/
+CMakeCache.txt
+CMakeFiles/
+bin/
+cmake_install.cmake
