@@ -14,6 +14,8 @@ public:
     std::vector<uint64_t> cancel_rejects;
 
     void onNewOrder(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags) {
+        (void)symbol;
+        (void)flags;
         new_orders.emplace_back(order_id, side, quantity, price);
     }
 
@@ -22,6 +24,7 @@ public:
     }
 
     void onModifyOrder(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, int32_t price) {
+        (void)symbol;
         modified_orders.emplace_back(order_id, side, quantity, price);
     }
 
@@ -30,6 +33,9 @@ public:
     }
 
     void onFill(uint64_t order_id, uint32_t symbol, ndfex::md::SIDE side, uint32_t quantity, int32_t price, uint8_t flags, bool active) {
+        (void)symbol;
+        (void)flags;
+        (void)active;
         fills.emplace_back(order_id, side, quantity, price);
     }
 

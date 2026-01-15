@@ -25,11 +25,21 @@ class MockHandler {
 public:
   std::vector<uint64_t> new_orders;
   void on_new_order(int sock_fd, const new_order& msg) {
+    (void)sock_fd;
     new_orders.push_back(msg.order_id);
   }
-  void on_delete_order(int sock_fd, const delete_order& msg) {}
-  void on_modify_order(int sock_fd, const modify_order& msg) {}
-  void on_login(int sock_fd, const login& msg) {}
+  void on_delete_order(int sock_fd, const delete_order& msg) {
+    (void)sock_fd;
+    (void)msg;
+  }
+  void on_modify_order(int sock_fd, const modify_order& msg) {
+    (void)sock_fd;
+    (void)msg;
+  }
+  void on_login(int sock_fd, const login& msg) {
+    (void)sock_fd;
+    (void)msg;
+  }
 
 };
 
@@ -37,7 +47,7 @@ TEST(OEStreamParserTest, NewOrder) {
     MockHandler handler;
     auto logger = make_test_logger("test_logger_new_order");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
+    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0, 0};
 
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     parser.parse(0, reinterpret_cast<char*>(&msg), sizeof(new_order));
@@ -50,7 +60,7 @@ TEST(OEStreamParserTest, NewOrderPartial) {
     MockHandler handler;
     auto logger = make_test_logger("test_logger_new_order_partial");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
+    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
     parser.parse(0, buf.data(), 1);
@@ -64,7 +74,7 @@ TEST(OEStreamParserTest, NewOrderMultiple) {
     MockHandler handler;
     auto logger = make_test_logger("test_logger_new_order_multiple");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
+    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
     parser.parse(0, buf.data(), buf.size());
@@ -79,7 +89,7 @@ TEST(OEStreamParserTest, NewOrderMultipleInSameBuffer) {
     MockHandler handler;
     auto logger = make_test_logger("test_logger_new_order_multiple_same_buffer");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
+    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
     buf += buf;
@@ -95,7 +105,7 @@ TEST(OEStreamParserTest, ErrorOnUnknownType) {
     MockHandler handler;
     auto logger = make_test_logger("test_logger_error_on_unknown_type");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_request_header header = {sizeof(new_order), 0, ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
+    oe_request_header header = {sizeof(new_order), 0, ndfex::oe::OE_PROTOCOL_VERSION, 0, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
 
@@ -126,7 +136,7 @@ TEST(OEStreamParserTest, ErrorOnThrottleExceeded) {
     MockHandler handler;
     auto logger = make_test_logger("test_logger_error_on_throttle_exceeded");
     StreamParser<MockHandler> parser(handler, logger);
-    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0};
+    oe_request_header header = {sizeof(new_order), static_cast<uint8_t>(MSG_TYPE::NEW_ORDER), ndfex::oe::OE_PROTOCOL_VERSION, 0, 0, 0};
     new_order msg = {header, 1, 0, md::SIDE::BUY, 10, 50, 0};
     std::string buf(reinterpret_cast<char*>(&msg), sizeof(new_order));
 
