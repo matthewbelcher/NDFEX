@@ -73,6 +73,7 @@ This project is intended for the course on High-Frequency Trading Technologies a
 - **FTXUI**: Terminal UI library for `md_viewer` (included as git submodule, requires building)
 - **websocketpp**: WebSocket library for `web_data`
 - **libpcap**: For `pcap_printer` tool (Linux package, optional)
+- **GoogleTest**: For running C++ tests
 - **Node.js**: For the clearing web app
 
 ### Installing Dependencies
@@ -88,6 +89,14 @@ git submodule update --init --recursive
 
 # Build FTXUI (required for viewer)
 cd 3rdparty/FTXUI && mkdir build && cd build && cmake .. && make && cd ../../..
+
+# Install GoogleTest (for tests)
+# Ubuntu/Debian:
+#   sudo apt-get install -y libgtest-dev
+# Fedora:
+#   sudo dnf install -y gtest-devel
+# Arch:
+#   sudo pacman -S gtest
 
 # For web app
 cd clearing-web-app && npm install
@@ -145,13 +154,20 @@ make -j$(nproc)
 cd ../../..
 ```
 
-### Running Tests (Linux)
+### Building and Running Tests (Linux)
 
 ```bash
-cd build
-cmake -DBUILD_TESTS=ON ..
-make -j$(nproc)
-ctest --output-on-failure
+# Configure with tests enabled
+cmake -S . -B build -DBUILD_TESTS=ON
+
+# Build tests (and core targets)
+cmake --build build -j$(nproc)
+
+# Run all tests
+ctest --test-dir build --output-on-failure
+
+# Run a single test binary
+ctest --test-dir build -R test_md_mcast --output-on-failure
 ```
 
 ### Built Executables
