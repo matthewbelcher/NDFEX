@@ -42,6 +42,13 @@ int main(int argc, char** argv) {
     std::vector<symbol_definition> symbols = {
         {1, 10, 1, 1000, 10000000, 0}, // GOLD
         {2, 5, 1, 1000, 10000000, 0}, // BLUE
+        //define UNDY & components
+        {3, 5, 1, 1000, 10000000, 0}, //KNAN
+        {4, 5, 1, 1000, 10000000, 0}, //STED
+        {5, 5, 1, 1000, 10000000, 0}, //RYAN
+        {6, 5, 1, 1000, 10000000, 0}, //SHAG
+        {7, 5, 1, 1000, 10000000, 0}, //DBRT
+        {8, 10, 1, 1000, 10000000, 0}, //UNDY
     };
 
     constexpr int logging_core = 1;

@@ -1,0 +1,2 @@
+alice pass123 3 10 4 20 8 100
+bob hunter2 3 5 8 50
