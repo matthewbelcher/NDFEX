@@ -64,19 +64,22 @@ class PositionLedger:
         if amount <= 0:
             return False, "Amount must be positive"
         
-        # Check if client has sufficient underlying positions
-        insufficient = []
-        for symbol in UNDERLYING_SYMBOLS:
-            pos = self.get_position(client_id, symbol)
-            if pos < amount:
-                ticker = get_ticker(symbol)
-                insufficient.append(f"{ticker}: have {pos}, need {amount}")
-        
-        if insufficient:
-            return False, f"Insufficient positions: {', '.join(insufficient)}"
-        
-        # Apply adjustments atomically
+        # Check and modify atomically under the same lock
         with self._lock:
+            # Check if client has sufficient underlying positions
+            insufficient = []
+            for symbol in UNDERLYING_SYMBOLS:
+                clearing_pos = self.clearing.get_position(client_id, symbol)
+                adjustment = self._etf_adjustments[client_id][symbol]
+                pos = clearing_pos + adjustment
+                if pos < amount:
+                    ticker = get_ticker(symbol)
+                    insufficient.append(f"{ticker}: have {pos}, need {amount}")
+            
+            if insufficient:
+                return False, f"Insufficient positions: {', '.join(insufficient)}"
+            
+            # Apply adjustments
             for symbol in UNDERLYING_SYMBOLS:
                 self._etf_adjustments[client_id][symbol] -= amount
             self._etf_adjustments[client_id][ETF_SYMBOL] += amount
@@ -101,13 +104,17 @@ class PositionLedger:
         if amount <= 0:
             return False, "Amount must be positive"
         
-        # Check if client has sufficient UNDY
-        undy_pos = self.get_position(client_id, ETF_SYMBOL)
-        if undy_pos < amount:
-            return False, f"Insufficient UNDY: have {undy_pos}, need {amount}"
-        
-        # Apply adjustments atomically
+        # Check and modify atomically under the same lock
         with self._lock:
+            # Check if client has sufficient UNDY
+            clearing_pos = self.clearing.get_position(client_id, ETF_SYMBOL)
+            adjustment = self._etf_adjustments[client_id][ETF_SYMBOL]
+            undy_pos = clearing_pos + adjustment
+            
+            if undy_pos < amount:
+                return False, f"Insufficient UNDY: have {undy_pos}, need {amount}"
+            
+            # Apply adjustments
             self._etf_adjustments[client_id][ETF_SYMBOL] -= amount
             for symbol in UNDERLYING_SYMBOLS:
                 self._etf_adjustments[client_id][symbol] += amount
@@ -164,8 +171,8 @@ class PositionLedger:
                         ask_price, _ = md_client.get_best_ask(symbol)
                         if ask_price > 0:
                             pnl = pnl + (ask_price * position)
-                    # Subtract fees (0.05 per share traded)
-                    pnl -= volume * 0.05
+                # Subtract fees (0.05 per share traded)
+                pnl -= volume * 0.05
                 
                 # Only include if there's any activity
                 if position != 0 or pnl != 0 or volume != 0:
