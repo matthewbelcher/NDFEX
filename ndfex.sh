@@ -60,6 +60,7 @@ Options:
     --bot-type TYPE       Bot type: bot_runner, stable_bot_runner, smarter_bots (default: bot_runner)
     --no-bots             Don't start trading bots
     --no-snapshots        Don't start snapshot service
+    --with-etf            Start the ETF service (provides dashboard + create/redeem API)
     --add-mcast-route     Add 239.0.0.0/8 route via MCAST_BIND_IP
     -h, --help            Show this help message
 
@@ -327,6 +328,26 @@ start_all() {
             "$BIND_IP" "$OE_PORT" "$MCAST_IP" "$SNAPSHOT_MCAST_IP" "$MCAST_BIND_IP"
     fi
 
+    # 4. Start ETF Service (Python - provides dashboard + create/redeem API)
+    if [[ "$START_ETF" == "yes" ]]; then
+        if command -v python3 &> /dev/null; then
+            log_info "Starting ETF service..."
+            (cd "${SCRIPT_DIR}" && python3 -u etf_service/app.py \
+                "$MCAST_IP" "$CLEARING_MCAST_IP" "$MCAST_BIND_IP" \
+                > "${LOG_DIR}/etf_service.log" 2>&1) &
+            local pid=$!
+            sleep 1
+            if kill -0 "$pid" 2>/dev/null; then
+                save_pid "etf_service" "$pid"
+                log_info "ETF service started (PID: $pid)"
+            else
+                log_error "ETF service failed to start. Check ${LOG_DIR}/etf_service.log"
+            fi
+        else
+            log_warn "Python3 not found, skipping ETF service"
+        fi
+    fi
+
     echo ""
     log_info "NDFEX system started!"
     log_info "Logs available in: $LOG_DIR"
@@ -336,6 +357,7 @@ stop_all() {
     log_info "Stopping NDFEX system..."
 
     # Stop in reverse order
+    stop_component "etf_service"
     stop_component "bots"
     stop_component "md_snapshots"
     stop_component "matching_engine"
@@ -347,7 +369,7 @@ show_status() {
     echo "NDFEX System Status"
     echo "==================="
 
-    local components=("matching_engine" "md_snapshots" "bots")
+    local components=("matching_engine" "md_snapshots" "bots" "etf_service")
 
     for comp in "${components[@]}"; do
         if is_running "$comp"; then
@@ -367,6 +389,7 @@ tail_logs() {
 COMMAND=""
 START_BOTS="yes"
 START_SNAPSHOTS="yes"
+START_ETF="no"
 ADD_MCAST_ROUTE="no"
 
 while [[ $# -gt 0 ]]; do
@@ -417,6 +440,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-snapshots)
             START_SNAPSHOTS="no"
+            shift
+            ;;
+        --with-etf)
+            START_ETF="yes"
             shift
             ;;
         --add-mcast-route)
