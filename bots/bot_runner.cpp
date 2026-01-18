@@ -42,20 +42,58 @@ int main(int argc, char* argv[]) {
     }
 
     std::vector<symbol_definition> symbols = {
-        {1, 10, 1, 1000, 10000000, 0}, // GOLD
-        {2, 5, 1, 1000, 10000000, 0}, // BLUE
+        {1, 10, 1, 1000, 10000000, 0},  // GOLD
+        {2, 5, 1, 1000, 10000000, 0},   // BLUE
+        // UNDY ETF underlying components (Notre Dame dorms)
+        // Men's dorms
+        {3, 5, 1, 1000, 10000000, 0},   // KNAN - Keenan Hall
+        {4, 5, 1, 1000, 10000000, 0},   // STED - St. Edward's Hall
+        {5, 5, 1, 1000, 10000000, 0},   // FISH - Fisher Hall
+        {6, 5, 1, 1000, 10000000, 0},   // DILN - Dillon Hall
+        {7, 5, 1, 1000, 10000000, 0},   // SORN - Sorin Hall
+        // Women's dorms
+        {8, 5, 1, 1000, 10000000, 0},   // RYAN - Ryan Hall
+        {9, 5, 1, 1000, 10000000, 0},   // LYON - Lyons Hall
+        {10, 5, 1, 1000, 10000000, 0},  // WLSH - Walsh Hall
+        {11, 5, 1, 1000, 10000000, 0},  // LEWI - Lewis Hall
+        {12, 5, 1, 1000, 10000000, 0},  // BDIN - Badin Hall
+        // ETF (1 UNDY = 1 share of each underlying)
+        {13, 10, 1, 1000, 10000000, 0}, // UNDY - Notre Dame Dorm ETF
     };
 
     std::vector<ndfex::bots::FairValue*> fair_values{
-        new ndfex::bots::RandomWalkFairValue(1200, symbols[0]),
-        new ndfex::bots::RandomWalkFairValue(900, symbols[1]),
+        new ndfex::bots::RandomWalkFairValue(1200, symbols[0]),  // GOLD
+        new ndfex::bots::RandomWalkFairValue(900, symbols[1]),   // BLUE
+        // Dorm underlyings - prices around 500-700
+        new ndfex::bots::RandomWalkFairValue(550, symbols[2]),   // KNAN
+        new ndfex::bots::RandomWalkFairValue(520, symbols[3]),   // STED
+        new ndfex::bots::RandomWalkFairValue(580, symbols[4]),   // FISH
+        new ndfex::bots::RandomWalkFairValue(510, symbols[5]),   // DILN
+        new ndfex::bots::RandomWalkFairValue(600, symbols[6]),   // SORN
+        new ndfex::bots::RandomWalkFairValue(530, symbols[7]),   // RYAN
+        new ndfex::bots::RandomWalkFairValue(540, symbols[8]),   // LYON
+        new ndfex::bots::RandomWalkFairValue(560, symbols[9]),   // WLSH
+        new ndfex::bots::RandomWalkFairValue(570, symbols[10]),  // LEWI
+        new ndfex::bots::RandomWalkFairValue(590, symbols[11]),  // BDIN
+        // UNDY ETF - fair value = sum of underlyings (~5550)
+        new ndfex::bots::RandomWalkFairValue(5550, symbols[12]), // UNDY
     };
 
     // create market data client
     ndfex::bots::MDClient md_client(mcast_ip, 12345, snapshot_ip, 12345, mcast_bind_ip, logger);
     md_client.wait_for_snapshot();
 
-    std::vector<std::vector<int32_t>> variances = { {0, 0}, {1, 1}, {-1, -1}, {1, 0}, {2, 0}, {0, 2}, {3, 0} };
+    // Variances for each market maker (one value per symbol)
+    // Format: {GOLD, BLUE, KNAN, STED, FISH, DILN, SORN, RYAN, LYON, WLSH, LEWI, BDIN, UNDY}
+    std::vector<std::vector<int32_t>> variances = {
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},      // Neutral
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 10},     // Slightly bullish
+        {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -10},  // Slightly bearish
+        {1, 0, 2, 0, 1, 0, 2, 0, 1, 0, 2, 0, 5},      // Mixed
+        {2, 0, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 10},     // Alternating
+        {0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5},      // Dorm focused
+        {3, 0, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, 0}, // Contrarian
+    };
 
     uint32_t last_order_id = 1;
     std::vector<ndfex::bots::FairValueMarketMaker> market_makers;

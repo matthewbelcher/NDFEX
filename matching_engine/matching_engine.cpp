@@ -40,8 +40,23 @@ int main(int argc, char** argv) {
     std::string clearing_ip = argv[3];
 
     std::vector<symbol_definition> symbols = {
-        {1, 10, 1, 1000, 10000000, 0}, // GOLD
-        {2, 5, 1, 1000, 10000000, 0}, // BLUE
+        {1, 10, 1, 1000, 10000000, 0},  // GOLD
+        {2, 5, 1, 1000, 10000000, 0},   // BLUE
+        // UNDY ETF underlying components (Notre Dame dorms)
+        // Men's dorms
+        {3, 5, 1, 1000, 10000000, 0},   // KNAN - Keenan Hall
+        {4, 5, 1, 1000, 10000000, 0},   // STED - St. Edward's Hall
+        {5, 5, 1, 1000, 10000000, 0},   // FISH - Fisher Hall
+        {6, 5, 1, 1000, 10000000, 0},   // DILN - Dillon Hall
+        {7, 5, 1, 1000, 10000000, 0},   // SORN - Sorin Hall
+        // Women's dorms
+        {8, 5, 1, 1000, 10000000, 0},   // RYAN - Ryan Hall
+        {9, 5, 1, 1000, 10000000, 0},   // LYON - Lyons Hall
+        {10, 5, 1, 1000, 10000000, 0},  // WLSH - Walsh Hall
+        {11, 5, 1, 1000, 10000000, 0},  // LEWI - Lewis Hall
+        {12, 5, 1, 1000, 10000000, 0},  // BDIN - Badin Hall
+        // ETF (1 UNDY = 1 share of each underlying)
+        {13, 10, 1, 1000, 10000000, 0}, // UNDY - Notre Dame Dorm ETF
     };
 
     constexpr int logging_core = 1;
