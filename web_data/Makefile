@@ -1,5 +1,5 @@
 CXX = clang++
-CXXFLAGS = -g -std=c++17 -Wall -Wextra -I/usr/local/include -I../ -I../3rdparty/spdlog/include -I../3rdparty/websocketpp/
+CXXFLAGS = -g -std=c++17 -I/usr/local/include -I../ -I../3rdparty/spdlog/include -I../3rdparty/websocketpp/
 LDFLAGS = -L/usr/local/lib -lpthread
 
 TARGET = web_data

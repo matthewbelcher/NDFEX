@@ -93,7 +93,7 @@ void ClearingClient::process() {
 
     clearing::clearing_header* header = reinterpret_cast<clearing::clearing_header*>(buf);
     if (header->magic_number != clearing::MAGIC_NUMBER) {
-        logger->error("Invalid magic number: {}", header->magic_number);
+        logger->error("Invalid magic number: {}", (uint64_t)header->magic_number);
         throw std::runtime_error("Invalid magic number");
     }
 
@@ -101,21 +101,21 @@ void ClearingClient::process() {
 
     // check sequence number
     if (last_seq_num != 0 && header->seq_num != last_seq_num + 1) {
-        logger->error("Invalid sequence number: {} (expected {})", header->seq_num, last_seq_num + 1);
+      logger->error("Invalid sequence number: {} (expected {})", (uint32_t)header->seq_num, last_seq_num + 1);
         return;
     }
     last_seq_num = header->seq_num;
 
     switch (header->msg_type) {
         case MSG_TYPE::FILL: {
-            if (len < sizeof(clearing::fill)) {
+          if (len < (uint32_t)sizeof(clearing::fill)) {
                 logger->error("Message too short for fill: {}", len);
                 return;
             }
 
             clearing::fill* fill = reinterpret_cast<clearing::fill*>(buf);
-            logger->info("Fill: client_id={}, symbol={}, quantity={}, price={}, side={}", fill->client_id, fill->symbol, fill->quantity,
-                 fill->price, static_cast<int>(fill->side));
+            logger->info("Fill: client_id={}, symbol={}, quantity={}, price={}, side={}", (uint32_t)fill->client_id, (uint32_t)fill->symbol, (uint32_t)fill->quantity,
+                         (int32_t)fill->price, static_cast<int>(fill->side));
             if (fill->side == md::SIDE::BUY) {
                 positions[fill->client_id][fill->symbol] += fill->quantity;
                 total_buy[fill->client_id][fill->symbol] += (fill->quantity * fill->price);
@@ -131,7 +131,7 @@ void ClearingClient::process() {
             break;
         }
         case MSG_TYPE::HEARTBEAT: {
-            logger->info("Heartbeat {}", header->seq_num);
+          logger->info("Heartbeat {}", (uint32_t)header->seq_num);
             break;
         }
         default:

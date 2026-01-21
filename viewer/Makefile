@@ -1,6 +1,6 @@
 CXX = clang++
 CXXFLAGS = -g -std=c++17 -Wall -Wextra -I/usr/local/include -I../ -I../3rdparty/spdlog/include -I../3rdparty/FTXUI/include
-LDFLAGS = -L/usr/local/lib -L../3rdparty/FTXUI/build -lftxui-dom -lftxui-screen -lftxui-component -lpthread -lpcap
+LDFLAGS = -L/usr/local/lib -L../3rdparty/FTXUI/build -lftxui-dom -lftxui-screen -lftxui-component -lpthread -lpcap -lcap
 
 TARGET = md_viewer
 SRCS = md_viewer.cpp ../bots/md_client.cpp ../bots/order_book.cpp

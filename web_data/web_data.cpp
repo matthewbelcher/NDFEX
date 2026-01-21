@@ -140,6 +140,7 @@ int main(int argc, char* argv[]) {
 
     server.set_validate_handler([](websocketpp::connection_hdl hdl) {
         // Validate the connection
+        (void) hdl;
         return true; // Accept all connections for simplicity
     });
 

@@ -201,7 +201,7 @@ int main(int argc, char* argv[]) {
                 last_seq_num = snapshot_info->last_md_seq_num;
                 std::cout << "Snapshot info: symbol=" << snapshot_info->symbol << ", last_md_seq_num=" << snapshot_info->last_md_seq_num << ", bid_count=" << snapshot_info->bid_count << ", ask_count=" << snapshot_info->ask_count << std::endl;
 
-                snapshot_order_count[snapshot_info->symbol] = {snapshot_info->bid_count, snapshot_info->ask_count};
+                snapshot_order_count[(uint32_t)snapshot_info->symbol] = {(uint32_t)snapshot_info->bid_count, (uint32_t)snapshot_info->ask_count};
 
             }
 
