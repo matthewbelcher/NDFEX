@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NDFEX ETF Service</title>
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --text-primary: #c9d1d9;
+            --text-secondary: #8b949e;
+            --accent-gold: #d4a843;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-blue: #58a6ff;
+            --border: #30363d;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--accent-gold);
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+        
+        h1 span {
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+        
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        
+        .section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .section h2 {
+            font-size: 1rem;
+            color: var(--accent-blue);
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        
+        .form-group {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            align-items: flex-end;
+        }
+        
+        .form-field {
+            flex: 1;
+        }
+        
+        label {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 1rem;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 0.75rem;
+        }
+        
+        button {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        
+        button.create {
+            background: var(--accent-green);
+            color: #000;
+        }
+        
+        button.redeem {
+            background: var(--accent-gold);
+            color: #000;
+        }
+        
+        button:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.1);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .result {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            display: none;
+        }
+        
+        .result.success {
+            background: rgba(63, 185, 80, 0.15);
+            border: 1px solid var(--accent-green);
+            color: var(--accent-green);
+            display: block;
+        }
+        
+        .result.error {
+            background: rgba(248, 81, 73, 0.15);
+            border: 1px solid var(--accent-red);
+            color: var(--accent-red);
+            display: block;
+        }
+        
+        .positions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 0.75rem;
+        }
+        
+        .position-card {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.75rem;
+            text-align: center;
+        }
+        
+        .position-card .ticker {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--accent-blue);
+            margin-bottom: 0.25rem;
+        }
+        
+        .position-card .qty {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+        
+        .position-card .qty.positive {
+            color: var(--accent-green);
+        }
+        
+        .position-card .qty.negative {
+            color: var(--accent-red);
+        }
+        
+        .position-card .qty.zero {
+            color: var(--text-secondary);
+        }
+        
+        .position-card.etf {
+            border-color: var(--accent-gold);
+            background: rgba(212, 168, 67, 0.1);
+        }
+        
+        .position-card.etf .ticker {
+            color: var(--accent-gold);
+        }
+        
+        .info {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 1rem;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+        
+        .info code {
+            background: var(--bg-primary);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            color: var(--accent-gold);
+        }
+        
+        #loading {
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>UNDY <span>ETF Service</span></h1>
+            <p class="subtitle">Notre Dame Dorm Exchange-Traded Fund</p>
+        </header>
+        
+        <div class="section">
+            <h2>ETF Operations</h2>
+            <div class="form-group">
+                <div class="form-field">
+                    <label for="client_id">Client ID</label>
+                    <input type="number" id="client_id" placeholder="e.g., 1" min="1">
+                </div>
+                <div class="form-field">
+                    <label for="amount">Amount</label>
+                    <input type="number" id="amount" placeholder="e.g., 10" min="1">
+                </div>
+            </div>
+            <div class="btn-group">
+                <button class="create" onclick="createETF()">Create UNDY</button>
+                <button class="redeem" onclick="redeemETF()">Redeem UNDY</button>
+            </div>
+            <div id="result" class="result"></div>
+            
+            <div class="info">
+                <strong>ETF Composition:</strong> 1 UNDY = 1 share each of 
+                <code>KNAN</code> <code>STED</code> <code>FISH</code> <code>DILN</code> <code>SORN</code>
+                <code>RYAN</code> <code>LYON</code> <code>WLSH</code> <code>LEWI</code> <code>BDIN</code>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Positions</h2>
+            <div class="form-group">
+                <div class="form-field">
+                    <label for="lookup_client">Client ID</label>
+                    <input type="number" id="lookup_client" placeholder="e.g., 1" min="1">
+                </div>
+                <button class="create" onclick="loadPositions()" style="margin-bottom: 0;">Load</button>
+            </div>
+            <div id="positions-container">
+                <p id="loading">Enter a client ID to view positions</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = '';  // Same origin
+        
+        async function createETF() {
+            const clientId = document.getElementById('client_id').value;
+            const amount = document.getElementById('amount').value;
+            
+            if (!clientId || !amount) {
+                showResult('Please enter client ID and amount', false);
+                return;
+            }
+            
+            try {
+                const response = await fetch('/create', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({client_id: parseInt(clientId), amount: parseInt(amount)})
+                });
+                const data = await response.json();
+                showResult(data.message + ` (UNDY balance: ${data.undy_balance})`, data.success);
+                if (data.success) {
+                    loadPositions();
+                }
+            } catch (err) {
+                showResult('Error: ' + err.message, false);
+            }
+        }
+        
+        async function redeemETF() {
+            const clientId = document.getElementById('client_id').value;
+            const amount = document.getElementById('amount').value;
+            
+            if (!clientId || !amount) {
+                showResult('Please enter client ID and amount', false);
+                return;
+            }
+            
+            try {
+                const response = await fetch('/redeem', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({client_id: parseInt(clientId), amount: parseInt(amount)})
+                });
+                const data = await response.json();
+                showResult(data.message + ` (UNDY balance: ${data.undy_balance})`, data.success);
+                if (data.success) {
+                    loadPositions();
+                }
+            } catch (err) {
+                showResult('Error: ' + err.message, false);
+            }
+        }
+        
+        async function loadPositions() {
+            const clientId = document.getElementById('lookup_client').value || document.getElementById('client_id').value;
+            if (!clientId) return;
+            
+            document.getElementById('lookup_client').value = clientId;
+            
+            try {
+                const response = await fetch(`/positions/${clientId}`);
+                const data = await response.json();
+                
+                const container = document.getElementById('positions-container');
+                const positions = data.positions;
+                
+                // Symbol order: underlyings first, then ETF
+                const symbolOrder = ['KNAN', 'STED', 'FISH', 'DILN', 'SORN', 'RYAN', 'LYON', 'WLSH', 'LEWI', 'BDIN', 'UNDY', 'GOLD', 'BLUE'];
+                
+                let html = '<div class="positions-grid">';
+                for (const ticker of symbolOrder) {
+                    const qty = positions[ticker] || 0;
+                    const isETF = ticker === 'UNDY';
+                    const qtyClass = qty > 0 ? 'positive' : qty < 0 ? 'negative' : 'zero';
+                    
+                    html += `
+                        <div class="position-card ${isETF ? 'etf' : ''}">
+                            <div class="ticker">${ticker}</div>
+                            <div class="qty ${qtyClass}">${qty}</div>
+                        </div>
+                    `;
+                }
+                html += '</div>';
+                
+                container.innerHTML = html;
+            } catch (err) {
+                document.getElementById('positions-container').innerHTML = 
+                    '<p style="color: var(--accent-red);">Error loading positions</p>';
+            }
+        }
+        
+        function showResult(message, success) {
+            const el = document.getElementById('result');
+            el.textContent = message;
+            el.className = 'result ' + (success ? 'success' : 'error');
+        }
+    </script>
+</body>
+</html>
