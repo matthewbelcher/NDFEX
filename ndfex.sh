@@ -24,6 +24,7 @@ OE_PORT="${OE_PORT:-1234}"
 MD_PORT="${MD_PORT:-12345}"
 CLEARING_PORT="${CLEARING_PORT:-12346}"
 SNAPSHOT_PORT="${SNAPSHOT_PORT:-12345}"
+WEB_DATA_PORT="${WEB_DATA_PORT:-9002}"
 
 # Bot selection
 BOT_TYPE="${BOT_TYPE:-bot_runner}"
@@ -60,6 +61,7 @@ Options:
     --bot-type TYPE       Bot type: bot_runner, stable_bot_runner, smarter_bots (default: bot_runner)
     --no-bots             Don't start trading bots
     --no-snapshots        Don't start snapshot service
+    --no-web-data         Don't start web data WebSocket server
     --add-mcast-route     Add 239.0.0.0/8 route via MCAST_BIND_IP
     -h, --help            Show this help message
 
@@ -270,6 +272,16 @@ resolve_binaries() {
             exit 1
         fi
     fi
+
+    if [[ "$START_WEB_DATA" != "no" ]]; then
+        WEB_DATA_BIN="$(find_executable \
+            "${BUILD_DIR}/web_data" \
+            "${SCRIPT_DIR}/web_data/web_data" || true)"
+        if [[ -z "$WEB_DATA_BIN" ]]; then
+            log_warn "web_data binary not found (build/bin or web_data/web_data) - skipping"
+            START_WEB_DATA="no"
+        fi
+    fi
 }
 
 resolve_viewer_binary() {
@@ -327,15 +339,25 @@ start_all() {
             "$BIND_IP" "$OE_PORT" "$MCAST_IP" "$SNAPSHOT_MCAST_IP" "$MCAST_BIND_IP"
     fi
 
+    # 4. Start Web Data WebSocket Server
+    if [[ "$START_WEB_DATA" != "no" ]]; then
+        start_component "web_data" "$WEB_DATA_BIN" "${SCRIPT_DIR}/web_data" \
+            "$MCAST_IP" "$SNAPSHOT_MCAST_IP" "$CLEARING_MCAST_IP" "$MCAST_BIND_IP"
+    fi
+
     echo ""
     log_info "NDFEX system started!"
     log_info "Logs available in: $LOG_DIR"
+    if [[ "$START_WEB_DATA" != "no" ]]; then
+        log_info "Web scoreboard available at: http://localhost:3001 (run 'cd clearing-web-app && npm run dev')"
+    fi
 }
 
 stop_all() {
     log_info "Stopping NDFEX system..."
 
     # Stop in reverse order
+    stop_component "web_data"
     stop_component "bots"
     stop_component "md_snapshots"
     stop_component "matching_engine"
@@ -347,7 +369,7 @@ show_status() {
     echo "NDFEX System Status"
     echo "==================="
 
-    local components=("matching_engine" "md_snapshots" "bots")
+    local components=("matching_engine" "md_snapshots" "bots" "web_data")
 
     for comp in "${components[@]}"; do
         if is_running "$comp"; then
@@ -367,6 +389,7 @@ tail_logs() {
 COMMAND=""
 START_BOTS="yes"
 START_SNAPSHOTS="yes"
+START_WEB_DATA="yes"
 ADD_MCAST_ROUTE="no"
 
 while [[ $# -gt 0 ]]; do
@@ -417,6 +440,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-snapshots)
             START_SNAPSHOTS="no"
+            shift
+            ;;
+        --no-web-data)
+            START_WEB_DATA="no"
             shift
             ;;
         --add-mcast-route)

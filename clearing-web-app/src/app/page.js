@@ -1,11 +1,24 @@
 'use client'
 
 import { useEffect, useState, useRef } from "react";
+import styles from "./page.module.css";
 
-// Don't call this function directly from render
-// Instead, we'll use useEffect to call it after the component renders
+// Symbol configuration
+const SYMBOLS = {
+  1: { name: "GOLD", icon: "Au" },
+  2: { name: "BLUE", icon: "Bl" }
+};
+
+// Chart configuration helper
+function getChartColors(symbolId) {
+  const isGold = symbolId === 1 || symbolId === "1";
+  return {
+    bid: isGold ? "#d97706" : "#3b82f6",
+    ask: isGold ? "#fbbf24" : "#60a5fa"
+  };
+}
+
 function getOrCreateChart(timeSeries, symbolId) {
-  // Create a unique chart ID for each symbol
   const chartId = `chart-${symbolId}`;
   const canvas = document.getElementById(chartId);
 
@@ -16,57 +29,61 @@ function getOrCreateChart(timeSeries, symbolId) {
 
   const ctx = canvas.getContext("2d");
 
-  // Initialize chart instances object if it doesn't exist
   if (!window.chartInstances) {
     window.chartInstances = {};
   }
 
+  const colors = getChartColors(symbolId);
+
   const data = {
     datasets: [
       {
-        label: "Best Bid Price",
+        label: "Best Bid",
         data: timeSeries.map(([timestamp, { best_bid }]) => ({
           x: new Date(timestamp),
           y: best_bid,
         })),
-        borderColor: "#6495ED", // Cornflower blue - paler shade
+        borderColor: colors.bid,
+        backgroundColor: colors.bid + "20",
         fill: false,
-        pointRadius: 0, // Remove circles at data points
+        pointRadius: 0,
+        borderWidth: 2,
       },
       {
-        label: "Best Ask Price",
+        label: "Best Ask",
         data: timeSeries.map(([timestamp, { best_ask }]) => ({
           x: new Date(timestamp),
           y: best_ask,
         })),
-        borderColor: "#FF9999", // Light coral - paler shade
+        borderColor: colors.ask,
+        backgroundColor: colors.ask + "20",
         fill: false,
-        pointRadius: 0, // Remove circles at data points
+        pointRadius: 0,
+        borderWidth: 2,
       },
     ],
   };
 
-  // Check if a chart already exists for this canvas
   if (window.chartInstances[chartId]) {
-    // Update existing chart with new data
     const chart = window.chartInstances[chartId];
     chart.data.datasets[0].data = data.datasets[0].data;
     chart.data.datasets[1].data = data.datasets[1].data;
-    chart.update('none'); // 'none' disables animations during update for better performance
+    chart.update('none');
     return chart;
   } else {
-    // Create a new chart if one doesn't exist
     const myChart = new Chart(ctx, {
       type: "line",
       data: data,
       options: {
+        responsive: true,
+        maintainAspectRatio: false,
         elements: {
           point: {
-            radius: 0, // Remove all points globally
-            hoverRadius: 5, // Show points on hover for better interaction
+            radius: 0,
+            hoverRadius: 4,
           },
           line: {
-            tension: 0.2, // Slightly smooth the line for better appearance
+            tension: 0.3,
           }
         },
         scales: {
@@ -75,15 +92,28 @@ function getOrCreateChart(timeSeries, symbolId) {
             time: {
               unit: "second",
             },
+            grid: {
+              color: "rgba(0, 0, 0, 0.05)",
+            },
+            ticks: {
+              font: {
+                size: 11,
+              },
+              color: "#64748b",
+            },
           },
           y: {
-            // Remove beginAtZero to allow dynamic scaling
-            // Add configuration for dynamic Y axis
-            grace: '5%', // Add some padding above and below data points
+            grace: '5%',
             ticks: {
-              precision: 0 // Use integer precision for price values
+              precision: 0,
+              font: {
+                size: 11,
+              },
+              color: "#64748b",
             },
-            // Use suggested min/max for better auto-scaling
+            grid: {
+              color: "rgba(0, 0, 0, 0.05)",
+            },
             suggestedMin: Math.min(...data.datasets[0].data.map(d => d.y),
                                     ...data.datasets[1].data.map(d => d.y)) - 1,
             suggestedMax: Math.max(...data.datasets[0].data.map(d => d.y),
@@ -91,31 +121,125 @@ function getOrCreateChart(timeSeries, symbolId) {
           },
         },
         animation: {
-          duration: 500 // Faster animations for better performance
+          duration: 300
         },
         plugins: {
           legend: {
             position: 'top',
+            align: 'end',
+            labels: {
+              boxWidth: 12,
+              boxHeight: 12,
+              padding: 16,
+              font: {
+                size: 12,
+              },
+              usePointStyle: true,
+              pointStyle: 'circle',
+            },
           },
           tooltip: {
             mode: 'index',
             intersect: false,
+            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+            titleFont: {
+              size: 12,
+            },
+            bodyFont: {
+              size: 12,
+            },
+            padding: 10,
+            cornerRadius: 6,
           },
         },
       },
     });
 
-    // Store the chart instance for future reference
     window.chartInstances[chartId] = myChart;
     return myChart;
   }
 }
 
+// Connection status badge component
+function ConnectionBadge({ status }) {
+  const statusConfig = {
+    connected: { label: "Connected", className: styles.statusConnected },
+    connecting: { label: "Connecting...", className: styles.statusConnecting },
+    disconnected: { label: "Disconnected", className: styles.statusDisconnected },
+    error: { label: "Error", className: styles.statusError },
+  };
+
+  const config = statusConfig[status] || statusConfig.disconnected;
+
+  return (
+    <div className={`${styles.connectionStatus} ${config.className}`}>
+      <span className={styles.statusDot}></span>
+      <span>{config.label}</span>
+    </div>
+  );
+}
+
+// Symbol card component
+function SymbolCard({ symbol, timeSeries, symbolPositions }) {
+  const symbolInfo = SYMBOLS[symbol] || { name: `Symbol ${symbol}`, icon: "?" };
+  const isGold = symbol == 1;
+  const cardClass = isGold ? styles.goldCard : styles.blueCard;
+
+  return (
+    <div className={`${styles.symbolCard} ${cardClass}`}>
+      <div className={styles.cardHeader}>
+        <div className={styles.symbolIcon}>{symbolInfo.icon}</div>
+        <h2 className={styles.symbolTitle}>{symbolInfo.name}</h2>
+      </div>
+      <div className={styles.cardBody}>
+        <div className={styles.chartSection}>
+          <div className={styles.chartWrapper}>
+            <canvas id={`chart-${symbol}`} className={styles.chartCanvas}></canvas>
+          </div>
+        </div>
+        <div className={styles.positionSection}>
+          <h3 className={styles.sectionTitle}>Position Data</h3>
+          <div className={styles.tableWrapper}>
+            {symbolPositions.length > 0 ? (
+              <table className={styles.positionTable}>
+                <thead>
+                  <tr>
+                    <th>Client</th>
+                    <th>Position</th>
+                    <th>P&L</th>
+                    <th>Volume</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {symbolPositions.map((posData, idx) => (
+                    <tr key={idx}>
+                      <td>{posData.client_id}</td>
+                      <td>{posData.position}</td>
+                      <td>
+                        <div className={`${styles.pnlCell} ${posData.pnl >= 0 ? styles.pnlPositive : styles.pnlNegative}`}>
+                          <span className={styles.pnlArrow}>{posData.pnl >= 0 ? "▲" : "▼"}</span>
+                          <span>{posData.pnl.toFixed(2)}</span>
+                        </div>
+                      </td>
+                      <td>{posData.volume}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className={styles.emptyState}>No position data available</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
-  // use a state variable to trigger a re-render when the time series is updated
   const [symbolToTimeSeries, setSymbolToTimeSeries] = useState(new Map());
   const [positions, setPositions] = useState(new Map());
-
+  const [currentTime, setCurrentTime] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [errorMessage, setErrorMessage] = useState('');
   const socketRef = useRef(null);
@@ -123,92 +247,84 @@ export default function Home() {
   const maxReconnectAttempts = 1;
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
 
+  // Update current time every second (client-side only to avoid hydration mismatch)
+  useEffect(() => {
+    setCurrentTime(new Date());
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const getWebSocketUrl = () => {
+    const wsHost = process.env.NEXT_PUBLIC_WS_HOST || (typeof window !== 'undefined' ? window.location.hostname : 'localhost');
+    const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '9002';
+    return { wsHost, wsPort, url: `ws://${wsHost}:${wsPort}` };
+  };
+
   const connectWebSocket = () => {
-    // Clear any existing socket
     if (socketRef.current && socketRef.current.readyState !== WebSocket.CLOSED) {
       socketRef.current.close();
     }
+
+    const { wsHost, wsPort, url } = getWebSocketUrl();
 
     try {
       console.log(`Attempting to connect to WebSocket (Attempt ${reconnectAttempts + 1}/${maxReconnectAttempts})`);
       setConnectionStatus('connecting');
 
-      // Connect to our proxy instead of directly to the WebSocket server
-      // This avoids CORS issues
-      const wsHost = process.env.NEXT_PUBLIC_WS_HOST || 'localhost';
-      const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '9002';
-      socketRef.current = new WebSocket(`ws://${wsHost}:${wsPort}`);
+      socketRef.current = new WebSocket(url);
 
-      // Connection opened
       socketRef.current.addEventListener("open", event => {
         console.log("Connection established");
         setConnectionStatus('connected');
         setErrorMessage('');
-        setReconnectAttempts(0); // Reset attempts on successful connection
+        setReconnectAttempts(0);
       });
 
-      // Connection error
       socketRef.current.addEventListener("error", event => {
         console.error("WebSocket error:", event);
         setConnectionStatus('error');
-        const wsHost = process.env.NEXT_PUBLIC_WS_HOST || 'localhost';
-        const wsPort = process.env.NEXT_PUBLIC_WS_PORT || '9002';
         setErrorMessage(`Connection failed. Check if server is running at ws://${wsHost}:${wsPort}`);
 
-        // Try to reconnect if we haven't exceeded max attempts
         if (reconnectAttempts < maxReconnectAttempts) {
           clearTimeout(reconnectTimeoutRef.current);
           reconnectTimeoutRef.current = setTimeout(() => {
             setReconnectAttempts(prev => prev + 1);
             connectWebSocket();
-          }, 2000); // Wait 2 seconds before trying again
+          }, 2000);
         }
       });
 
-      // Listen for messages
       socketRef.current.addEventListener("message", event => {
         const stots = symbolToTimeSeries;
-
-        // parse json message from server
         const message = JSON.parse(event.data)
-
-        // format is { timestamp: 1699999999, snapshot: { ... }, positions: [...] }
         const { timestamp, snapshot, positions } = message
 
-        // Update positions if available
         if (positions) {
           setPositions(positions);
         }
 
-        // snapshot is a list of {"symbol": {}, "best_bid": {}, "best_ask": {}}}
-        // for each symbol in the snapshot, update the time series
         for (const sym in snapshot) {
           const { symbol, best_bid, best_ask } = snapshot[sym]
 
-          // if the symbol is not in the map, add it
           if (!stots.has(symbol)) {
             stots.set(symbol, [])
           }
 
-          // add the timestamp and snapshot to the time series
           stots.get(symbol).push([timestamp/ 1000000, { best_bid, best_ask }])
         }
 
-        // if the time series is too long, remove the oldest entry
-        // Use proper Map iteration with for...of
         for (const symbol of stots.keys()) {
           const timeSeries = stots.get(symbol)
           if (timeSeries.length > 1000) {
-            // delete the oldest entry
             timeSeries.shift()
           }
         }
 
-        // Set state with the NEW Map to trigger re-render
         setSymbolToTimeSeries(new Map(stots));
       });
 
-      // Connection closed
       socketRef.current.addEventListener("close", event => {
         console.log("Connection closed");
         setConnectionStatus('disconnected');
@@ -220,36 +336,28 @@ export default function Home() {
     }
   };
 
-  // Use a ref to track if Chart.js has been loaded
   const chartJsLoadedRef = useRef(false);
 
-  // This effect will run after the component has mounted
   useEffect(() => {
-    // Check if Chart.js is already available
     if (typeof Chart !== 'undefined' && chartJsLoadedRef.current) {
       return;
     }
 
-    // Load Chart.js and the required date adapter
     const loadChartJs = async () => {
       try {
-        // Create and load Chart.js script
         const chartScript = document.createElement('script');
         chartScript.src = 'https://cdn.jsdelivr.net/npm/chart.js';
         chartScript.async = true;
 
-        // Create and load the date adapter script
         const adapterScript = document.createElement('script');
         adapterScript.src = 'https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns';
         adapterScript.async = true;
 
-        // Wait for Chart.js to load first
         await new Promise((resolve) => {
           chartScript.onload = resolve;
           document.body.appendChild(chartScript);
         });
 
-        // Then load the adapter
         await new Promise((resolve) => {
           adapterScript.onload = resolve;
           document.body.appendChild(adapterScript);
@@ -257,8 +365,6 @@ export default function Home() {
 
         console.log('Chart.js and date adapter loaded');
         chartJsLoadedRef.current = true;
-
-        // Force a re-render to create charts now that Chart.js is loaded
         setSymbolToTimeSeries(symbolToTimeSeries);
       } catch (error) {
         console.error('Failed to load Chart.js or adapter:', error);
@@ -268,7 +374,6 @@ export default function Home() {
     loadChartJs();
 
     return () => {
-      // Clean up if component unmounts
       if (window.chartInstances) {
         Object.values(window.chartInstances).forEach(chart => chart.destroy());
         window.chartInstances = {};
@@ -276,14 +381,11 @@ export default function Home() {
     };
   }, []);
 
-  // This effect will update charts whenever symbolToTimeSeries changes
   useEffect(() => {
-    // Only try to create charts if Chart.js is loaded
     if (!chartJsLoadedRef.current || typeof Chart === 'undefined') {
       return;
     }
 
-    // Add a small delay to ensure DOM is ready
     const timer = setTimeout(() => {
       symbolToTimeSeries.forEach((timeSeries, symbol) => {
         if (timeSeries.length > 0) {
@@ -293,13 +395,11 @@ export default function Home() {
     }, 20);
 
     return () => clearTimeout(timer);
-  }, [symbolToTimeSeries]); // This dependency array is correct
+  }, [symbolToTimeSeries]);
 
   useEffect(() => {
-    // Initial connection attempt
     connectWebSocket();
 
-    // Cleanup function
     return () => {
       if (socketRef.current) {
         socketRef.current.close();
@@ -307,72 +407,97 @@ export default function Home() {
       }
       clearTimeout(reconnectTimeoutRef.current);
     };
-  }, []); // Empty dependency array means this runs once on mount
+  }, []);
+
+  const formatTime = (date) => {
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  };
 
   return (
-    <div>
-      <h1>NDFEX Scoreboard</h1>
-      <div>Connection Status: {connectionStatus}</div>
-      {errorMessage && <div style={{ color: 'red' }}>{errorMessage}</div>}
-      {reconnectAttempts > 0 &&
-        <div>Reconnection attempts: {reconnectAttempts}/{maxReconnectAttempts}</div>
-      }
-      {connectionStatus === 'error' && reconnectAttempts >= maxReconnectAttempts &&
-        <button onClick={() => {
-          setReconnectAttempts(0);
-          connectWebSocket();
-        }}>Try again</button>
-      }
-      {Array.from(symbolToTimeSeries.entries()).map(([symbol, timeSeries]) => {
-        // Find all position data for this symbol across all client IDs
-        const symbolPositions = positions && Array.isArray(positions)
-          ? positions.filter(p => p.symbol === parseInt(symbol))
-          : [];
-
-        return (
-          <div key={symbol} className="chart-container" style={{ margin: '20px 0' }}>
-            <h2>Symbol: {symbol == 1 ? "GOLD" : "BLUE"}</h2>
-            <div style={{ display: 'flex', gap: '20px' }}>
-              <div style={{ flex: '1' }}>
-                <canvas id={`chart-${symbol}`} width="400" height="200"></canvas>
-              </div>
-              <div style={{ flex: '0 0 300px', border: '1px solid #ccc', borderRadius: '4px', padding: '10px' }}>
-                <h3>Position Data</h3>
-                {symbolPositions.length > 0 ? (
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr>
-                        <th style={{ padding: '4px 8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Client ID</th>
-                        <th style={{ padding: '4px 8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Position</th>
-                        <th style={{ padding: '4px 8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>PnL</th>
-                        <th style={{ padding: '4px 8px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>Volume</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {symbolPositions.map((posData, idx) => (
-                        <tr key={idx}>
-                          <td style={{ padding: '4px 8px' }}>{posData.client_id}</td>
-                          <td style={{ padding: '4px 8px' }}>{posData.position}</td>
-                          <td style={{
-                            padding: '4px 8px',
-                            color: posData.pnl >= 0 ? 'green' : 'red',
-                            fontWeight: 'bold'
-                          }}>
-                            {posData.pnl.toFixed(2)}
-                          </td>
-                          <td style={{ padding: '4px 8px' }}>{posData.volume}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <p>No position data available</p>
-                )}
-              </div>
-            </div>
+    <div className={styles.page}>
+      {/* Header */}
+      <header className={styles.header}>
+        <div className={`${styles.container} ${styles.headerContent}`}>
+          <div className={styles.logo}>
+            <div className={styles.logoIcon}>NX</div>
+            <h1 className={styles.title}>NDFEX Scoreboard</h1>
           </div>
-        );
-      })}
+          <div className={styles.headerRight}>
+            {currentTime && <span className={styles.timestamp}>{formatTime(currentTime)}</span>}
+            <ConnectionBadge status={connectionStatus} />
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className={styles.main}>
+        <div className={styles.container}>
+          {/* Error Alert */}
+          {errorMessage && (
+            <div className={styles.alertBox}>
+              <svg className={styles.alertIcon} width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" />
+              </svg>
+              <span className={styles.alertMessage}>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* Reconnect Info */}
+          {reconnectAttempts > 0 && (
+            <div className={styles.reconnectInfo}>
+              Reconnection attempts: {reconnectAttempts}/{maxReconnectAttempts}
+            </div>
+          )}
+
+          {/* Retry Button */}
+          {connectionStatus === 'error' && reconnectAttempts >= maxReconnectAttempts && (
+            <button
+              className={styles.retryButton}
+              onClick={() => {
+                setReconnectAttempts(0);
+                connectWebSocket();
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path fillRule="evenodd" d="M8 3a5 5 0 104.546 2.914.5.5 0 01.908-.418A6 6 0 118 2v1z" clipRule="evenodd" />
+                <path d="M8 4.466V.534a.25.25 0 01.41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 018 4.466z" />
+              </svg>
+              Try Again
+            </button>
+          )}
+
+          {/* Symbol Cards */}
+          {symbolToTimeSeries.size > 0 ? (
+            <div className={styles.symbolGrid}>
+              {Array.from(symbolToTimeSeries.entries()).map(([symbol, timeSeries]) => {
+                const symbolPositions = positions && Array.isArray(positions)
+                  ? positions.filter(p => p.symbol === parseInt(symbol))
+                  : [];
+
+                return (
+                  <SymbolCard
+                    key={symbol}
+                    symbol={symbol}
+                    timeSeries={timeSeries}
+                    symbolPositions={symbolPositions}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            connectionStatus === 'connected' && (
+              <div className={styles.loadingState}>
+                <div className={styles.loadingSpinner}></div>
+                <div className={styles.loadingText}>Waiting for market data...</div>
+              </div>
+            )
+          )}
+        </div>
+      </main>
     </div>
   );
 }

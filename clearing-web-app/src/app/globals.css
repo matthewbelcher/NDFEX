@@ -1,12 +1,87 @@
 :root {
+  /* Base colors */
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Brand colors */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+
+  /* Status colors */
+  --success: #16a34a;
+  --success-bg: #dcfce7;
+  --danger: #dc2626;
+  --danger-bg: #fee2e2;
+  --warning: #f59e0b;
+  --warning-bg: #fef3c7;
+
+  /* Symbol accent colors */
+  --gold-accent: #d97706;
+  --gold-bg: #fef3c7;
+  --gold-border: #fbbf24;
+  --blue-accent: #2563eb;
+  --blue-bg: #dbeafe;
+  --blue-border: #60a5fa;
+
+  /* Surface colors */
+  --surface: #f8fafc;
+  --surface-hover: #f1f5f9;
+  --border: #e2e8f0;
+  --border-light: #f1f5f9;
+
+  /* Text colors */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+
+  /* Chart colors */
+  --chart-bid: #3b82f6;
+  --chart-ask: #f43f5e;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* Spacing */
+  --container-max: 1400px;
+  --container-padding: 24px;
+
+  /* Border radius */
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 12px;
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition: 200ms ease;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    /* Surface colors - dark mode */
+    --surface: #18181b;
+    --surface-hover: #27272a;
+    --border: #3f3f46;
+    --border-light: #27272a;
+
+    /* Text colors - dark mode */
+    --text-primary: #fafafa;
+    --text-secondary: #a1a1aa;
+    --text-muted: #71717a;
+
+    /* Status colors - dark mode backgrounds */
+    --success-bg: #14532d;
+    --danger-bg: #7f1d1d;
+    --warning-bg: #78350f;
+
+    /* Symbol accent colors - dark mode */
+    --gold-bg: #422006;
+    --blue-bg: #1e3a5f;
   }
 }
 
@@ -19,9 +94,10 @@ body {
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
 }
 
 * {
@@ -33,6 +109,12 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+/* Utility for monospace numbers */
+.mono {
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (prefers-color-scheme: dark) {
