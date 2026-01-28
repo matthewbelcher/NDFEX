@@ -19,7 +19,7 @@ public:
 
     class TradeSummaryListener {
     public:
-        virtual void on_trade_summary(uint32_t symbol, uint32_t quantity, int32_t price, md::SIDE aggressor_side) = 0;
+        virtual void on_trade_summary(uint32_t seq_num, uint32_t symbol, uint32_t quantity, int32_t price, md::SIDE aggressor_side) = 0;
     };
 
     MDClient(std::string live_ip, uint16_t live_port,
@@ -37,6 +37,8 @@ public:
 
     OrderBook::PriceLevel get_best_bid(uint32_t symbol) const;
     OrderBook::PriceLevel get_best_ask(uint32_t symbol) const;
+
+    uint32_t get_last_seq_num() const { return last_md_seq_num; }
 
 private:
 

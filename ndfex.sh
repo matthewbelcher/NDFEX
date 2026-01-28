@@ -15,8 +15,8 @@ LOG_DIR="${SCRIPT_DIR}/logs"
 # Default network settings
 BIND_IP="${BIND_IP:-127.0.0.1}"
 MCAST_IP="${MCAST_IP:-239.0.0.1}"
-SNAPSHOT_MCAST_IP="${SNAPSHOT_MCAST_IP:-239.0.0.3}"
-CLEARING_MCAST_IP="${CLEARING_MCAST_IP:-239.0.0.2}"
+SNAPSHOT_MCAST_IP="${SNAPSHOT_MCAST_IP:-239.0.0.2}"
+CLEARING_MCAST_IP="${CLEARING_MCAST_IP:-239.0.0.3}"
 MCAST_BIND_IP="${MCAST_BIND_IP:-$BIND_IP}"
 
 # Default ports
@@ -51,8 +51,8 @@ Commands:
 Options:
     --bind-ip IP          IP address to bind services (default: 127.0.0.1)
     --mcast-ip IP         Multicast IP for market data (default: 239.0.0.1)
-    --snapshot-mcast-ip IP Multicast IP for snapshots (default: 239.0.0.3)
-    --clearing-ip IP      Multicast IP for clearing data (default: 239.0.0.2)
+    --snapshot-mcast-ip IP Multicast IP for snapshots (default: 239.0.0.2)
+    --clearing-ip IP      Multicast IP for clearing data (default: 239.0.0.3)
     --mcast-bind-ip IP    IP to bind multicast listeners (default: 127.0.0.1)
     --oe-port PORT        Order entry port (default: 1234)
     --md-port PORT        Market data multicast port (default: 12345)
@@ -60,6 +60,8 @@ Options:
     --bot-type TYPE       Bot type: bot_runner, stable_bot_runner, smarter_bots (default: bot_runner)
     --no-bots             Don't start trading bots
     --no-snapshots        Don't start snapshot service
+    --no-web-data         Don't start web_data WebSocket server
+    --no-homework         Don't start homework checker
     --with-etf            Start the ETF service (provides dashboard + create/redeem API)
     --add-mcast-route     Add 239.0.0.0/8 route via MCAST_BIND_IP
     -h, --help            Show this help message
@@ -130,11 +132,71 @@ get_pid() {
 
 is_running() {
     local name="$1"
+    [[ -n "$(get_running_pid "$name")" ]]
+}
+
+get_running_pid() {
+    local name="$1"
     local pid=$(get_pid "$name")
+
+    # Check if PID from file is the actual process (not a wrapper script)
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-        return 0
+        # Verify it's the actual binary, not a shell wrapper
+        local cmdline=$(ps -p "$pid" -o comm= 2>/dev/null)
+        case "$name" in
+            matching_engine)
+                if [[ "$cmdline" == "matching_engin" || "$cmdline" == "matching_engine" ]]; then
+                    echo "$pid"
+                    return 0
+                fi
+                ;;
+            md_snapshots)
+                if [[ "$cmdline" == "md_snapshots" ]]; then
+                    echo "$pid"
+                    return 0
+                fi
+                ;;
+            bots)
+                if [[ "$cmdline" =~ ^(bot_runner|stable_bot_ru|smarter_bots|reject_bot)$ ]]; then
+                    echo "$pid"
+                    return 0
+                fi
+                ;;
+            web_data)
+                if [[ "$cmdline" == "web_data" ]]; then
+                    echo "$pid"
+                    return 0
+                fi
+                ;;
+            homework_checker)
+                if [[ "$cmdline" == "python3" || "$cmdline" == "python" ]]; then
+                    echo "$pid"
+                    return 0
+                fi
+                ;;
+            slack_bot)
+                if [[ "$cmdline" == "python3" || "$cmdline" == "python" ]]; then
+                    echo "$pid"
+                    return 0
+                fi
+                ;;
+        esac
     fi
-    return 1
+
+    # Fallback: find by process name pattern (pgrep uses ERE, so | not \|)
+    local pattern=""
+    case "$name" in
+        matching_engine) pattern="/matching_engine " ;;
+        md_snapshots) pattern="/md_snapshots " ;;
+        bots) pattern="/bot_runner |/stable_bot_runner |/smarter_bots |/reject_bot " ;;
+        web_data) pattern="web_data 239" ;;
+        homework_checker) pattern="server.py.*--port" ;;
+        slack_bot) pattern="slack_bot.py" ;;
+    esac
+
+    if [[ -n "$pattern" ]]; then
+        pgrep -f "$pattern" 2>/dev/null | head -1
+    fi
 }
 
 start_component() {
@@ -155,8 +217,8 @@ start_component() {
 
     log_info "Starting $name..."
 
-    # Start the process in background, redirect output to log file
-    (cd "$cwd" && "$exe" $args > "${LOG_DIR}/${name}.log" 2>&1) &
+    # Start the process in background, redirect outside subshell so exec works properly
+    (cd "$cwd" && exec "$exe" $args) > "${LOG_DIR}/${name}.log" 2>&1 &
     local pid=$!
 
     # Give it a moment to start
@@ -175,38 +237,62 @@ start_component() {
 stop_component() {
     local name="$1"
     local pid=$(get_pid "$name")
+    local found_running=0
 
-    if [[ -z "$pid" ]]; then
-        log_warn "$name is not running (no PID file)"
-        return 0
-    fi
+    # First try the PID from the PID file
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        found_running=1
+        log_info "Stopping $name (PID: $pid)..."
+        kill -TERM "$pid" 2>/dev/null || true
 
-    if ! kill -0 "$pid" 2>/dev/null; then
-        log_warn "$name is not running (stale PID file)"
-        rm -f "${PID_DIR}/${name}.pid"
-        return 0
-    fi
+        # Wait up to 5 seconds for graceful shutdown
+        local count=0
+        while kill -0 "$pid" 2>/dev/null && [[ $count -lt 50 ]]; do
+            sleep 0.1
+            count=$((count + 1))
+        done
 
-    log_info "Stopping $name (PID: $pid)..."
-
-    # Try graceful shutdown first
-    kill -TERM "$pid" 2>/dev/null || true
-
-    # Wait up to 5 seconds for graceful shutdown
-    local count=0
-    while kill -0 "$pid" 2>/dev/null && [[ $count -lt 50 ]]; do
-        sleep 0.1
-        ((count++))
-    done
-
-    # Force kill if still running
-    if kill -0 "$pid" 2>/dev/null; then
-        log_warn "$name didn't stop gracefully, forcing..."
-        kill -9 "$pid" 2>/dev/null || true
+        # Force kill if still running
+        if kill -0 "$pid" 2>/dev/null; then
+            log_warn "$name didn't stop gracefully, forcing..."
+            kill -9 "$pid" 2>/dev/null || true
+        fi
     fi
 
     rm -f "${PID_DIR}/${name}.pid"
-    log_info "$name stopped"
+
+    # Also try to find and kill by process name pattern (fallback for orphaned processes)
+    # pgrep uses ERE, so | not \|
+    local pattern=""
+    case "$name" in
+        matching_engine) pattern="/matching_engine " ;;
+        md_snapshots) pattern="/md_snapshots " ;;
+        bots) pattern="/bot_runner |/stable_bot_runner |/smarter_bots |/reject_bot " ;;
+        web_data) pattern="web_data 239" ;;
+        homework_checker) pattern="server.py.*--port" ;;
+        slack_bot) pattern="slack_bot.py" ;;
+    esac
+
+    if [[ -n "$pattern" ]]; then
+        local orphan_pids=$(pgrep -f "$pattern" 2>/dev/null || true)
+        for opid in $orphan_pids; do
+            if [[ "$opid" != "$pid" ]]; then
+                found_running=1
+                log_info "Found orphaned $name process (PID: $opid), stopping..."
+                kill -TERM "$opid" 2>/dev/null || true
+                sleep 0.5
+                if kill -0 "$opid" 2>/dev/null; then
+                    kill -9 "$opid" 2>/dev/null || true
+                fi
+            fi
+        done
+    fi
+
+    if [[ $found_running -eq 1 ]]; then
+        log_info "$name stopped"
+    else
+        log_warn "$name was not running"
+    fi
 }
 
 get_iface_for_ip() {
@@ -271,6 +357,24 @@ resolve_binaries() {
             exit 1
         fi
     fi
+
+    if [[ "$START_WEB_DATA" != "no" ]]; then
+        WEB_DATA_BIN="$(find_executable \
+            "${BUILD_DIR}/web_data" \
+            "${SCRIPT_DIR}/web_data/web_data")"
+        if [[ -z "$WEB_DATA_BIN" ]]; then
+            log_error "web_data binary not found (build/bin or web_data/)"
+            exit 1
+        fi
+    fi
+
+    if [[ "$START_HOMEWORK" != "no" ]]; then
+        HOMEWORK_CHECKER_DIR="${SCRIPT_DIR}/homework_checker"
+        if [[ ! -f "${HOMEWORK_CHECKER_DIR}/server.py" ]]; then
+            log_error "homework_checker not found at ${HOMEWORK_CHECKER_DIR}"
+            exit 1
+        fi
+    fi
 }
 
 resolve_viewer_binary() {
@@ -328,7 +432,19 @@ start_all() {
             "$BIND_IP" "$OE_PORT" "$MCAST_IP" "$SNAPSHOT_MCAST_IP" "$MCAST_BIND_IP"
     fi
 
-    # 4. Start ETF Service (Python - provides dashboard + create/redeem API)
+    # 4. Start Web Data WebSocket Server
+    if [[ "$START_WEB_DATA" != "no" ]]; then
+        start_component "web_data" "$WEB_DATA_BIN" "${SCRIPT_DIR}/web_data" \
+            "$MCAST_IP" "$SNAPSHOT_MCAST_IP" "$CLEARING_MCAST_IP" "$MCAST_BIND_IP"
+        sleep 0.5
+    fi
+
+    # 5. Start Homework Checker (and Slack bot)
+    if [[ "$START_HOMEWORK" != "no" ]]; then
+        start_homework_checker
+    fi
+
+    # 6. Start ETF Service (Python - provides dashboard + create/redeem API)
     if [[ "$START_ETF" == "yes" ]]; then
         if command -v python3 &> /dev/null; then
             log_info "Starting ETF service..."
@@ -353,11 +469,62 @@ start_all() {
     log_info "Logs available in: $LOG_DIR"
 }
 
+start_homework_checker() {
+    # Check if web_data is running (required dependency)
+    if ! is_running "web_data"; then
+        log_warn "web_data is not running - homework_checker requires it for market data"
+        log_warn "Skipping homework_checker start"
+        return 1
+    fi
+
+    local hw_dir="${SCRIPT_DIR}/homework_checker"
+
+    # Start homework checker server
+    if is_running "homework_checker"; then
+        log_warn "homework_checker is already running (PID: $(get_running_pid homework_checker))"
+    else
+        log_info "Starting homework_checker..."
+        (cd "$hw_dir" && exec uv run server.py --port 8080 --required 10) > "${LOG_DIR}/homework_checker.log" 2>&1 &
+        local pid=$!
+        sleep 2
+        if kill -0 "$pid" 2>/dev/null; then
+            save_pid "homework_checker" "$pid"
+            log_info "homework_checker started (PID: $pid)"
+        else
+            log_error "homework_checker failed to start. Check ${LOG_DIR}/homework_checker.log"
+            return 1
+        fi
+    fi
+
+    # Start slack bot
+    if is_running "slack_bot"; then
+        log_warn "slack_bot is already running (PID: $(get_running_pid slack_bot))"
+    else
+        if [[ -f "${hw_dir}/.env" ]]; then
+            log_info "Starting slack_bot..."
+            (cd "$hw_dir" && source .env && exec uv run slack_bot.py) > "${LOG_DIR}/slack_bot.log" 2>&1 &
+            local pid=$!
+            sleep 2
+            if kill -0 "$pid" 2>/dev/null; then
+                save_pid "slack_bot" "$pid"
+                log_info "slack_bot started (PID: $pid)"
+            else
+                log_warn "slack_bot failed to start. Check ${LOG_DIR}/slack_bot.log"
+            fi
+        else
+            log_warn "Slack bot .env not found, skipping slack_bot"
+        fi
+    fi
+}
+
 stop_all() {
     log_info "Stopping NDFEX system..."
 
     # Stop in reverse order
     stop_component "etf_service"
+    stop_component "slack_bot"
+    stop_component "homework_checker"
+    stop_component "web_data"
     stop_component "bots"
     stop_component "md_snapshots"
     stop_component "matching_engine"
@@ -369,11 +536,17 @@ show_status() {
     echo "NDFEX System Status"
     echo "==================="
 
-    local components=("matching_engine" "md_snapshots" "bots" "etf_service")
+    local components=("matching_engine" "md_snapshots" "bots" "web_data" "homework_checker" "slack_bot" "etf_service")
 
     for comp in "${components[@]}"; do
-        if is_running "$comp"; then
-            echo -e "$comp: ${GREEN}RUNNING${NC} (PID: $(get_pid $comp))"
+        local running_pid=$(get_running_pid "$comp")
+        if [[ -n "$running_pid" ]]; then
+            local pidfile_pid=$(get_pid "$comp")
+            if [[ "$running_pid" != "$pidfile_pid" ]]; then
+                echo -e "$comp: ${GREEN}RUNNING${NC} (PID: $running_pid) ${YELLOW}[PID file stale]${NC}"
+            else
+                echo -e "$comp: ${GREEN}RUNNING${NC} (PID: $running_pid)"
+            fi
         else
             echo -e "$comp: ${RED}STOPPED${NC}"
         fi
@@ -389,6 +562,8 @@ tail_logs() {
 COMMAND=""
 START_BOTS="yes"
 START_SNAPSHOTS="yes"
+START_WEB_DATA="yes"
+START_HOMEWORK="yes"
 START_ETF="no"
 ADD_MCAST_ROUTE="no"
 
@@ -440,6 +615,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-snapshots)
             START_SNAPSHOTS="no"
+            shift
+            ;;
+        --no-web-data)
+            START_WEB_DATA="no"
+            shift
+            ;;
+        --no-homework)
+            START_HOMEWORK="no"
             shift
             ;;
         --with-etf)

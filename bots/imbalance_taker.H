@@ -24,7 +24,7 @@ namespace ndfex::bots {
 
         void process();
 
-        virtual void on_trade_summary(uint32_t symbol, uint32_t quantity, int32_t price, md::SIDE aggressor_side) override;
+        virtual void on_trade_summary(uint32_t seq_num, uint32_t symbol, uint32_t quantity, int32_t price, md::SIDE aggressor_side) override;
 
         private:
             OEClient& oe;

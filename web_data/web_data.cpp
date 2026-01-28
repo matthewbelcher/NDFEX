@@ -7,6 +7,8 @@
 #include <string>
 #include <set>
 #include <thread>
+#include <deque>
+#include <mutex>
 
 #include <spdlog/async.h>
 #include <spdlog/sinks/daily_file_sink.h>
@@ -20,8 +22,48 @@
 typedef websocketpp::server<websocketpp::config::asio> web_server;
 typedef std::set<websocketpp::connection_hdl,std::owner_less<websocketpp::connection_hdl>> connections;
 
+// Trade summary storage for homework validation
+struct TradeRecord {
+    uint64_t timestamp;
+    uint32_t seq_num;
+    uint32_t symbol;
+    uint32_t quantity;
+    int32_t price;
+    uint8_t aggressor_side;
+};
 
-void jsonify_snapshot(const ndfex::bots::MDClient& md_client, const ndfex::clearing::ClearingClient& clearing, std::string& json) {
+class TradeCollector : public ndfex::bots::MDClient::TradeSummaryListener {
+public:
+    static constexpr size_t MAX_TRADES = 1000;
+
+    void on_trade_summary(uint32_t seq_num, uint32_t symbol, uint32_t quantity, int32_t price, ndfex::md::SIDE aggressor_side) override {
+        std::lock_guard<std::mutex> lock(mutex);
+        trades.push_back({
+            static_cast<uint64_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
+            seq_num,
+            symbol,
+            quantity,
+            price,
+            static_cast<uint8_t>(aggressor_side)
+        });
+        if (trades.size() > MAX_TRADES) {
+            trades.pop_front();
+        }
+    }
+
+    std::deque<TradeRecord> get_recent_trades() {
+        std::lock_guard<std::mutex> lock(mutex);
+        return trades;
+    }
+
+private:
+    std::deque<TradeRecord> trades;
+    std::mutex mutex;
+};
+
+
+void jsonify_snapshot(const ndfex::bots::MDClient& md_client, const ndfex::clearing::ClearingClient& clearing,
+                      TradeCollector& trade_collector, std::string& json) {
 
     // get positions and P&L from clearing client
     auto positions = clearing.get_positions();
@@ -32,7 +74,8 @@ void jsonify_snapshot(const ndfex::bots::MDClient& md_client, const ndfex::clear
     std::ostringstream json_stream;
 
     // Start JSON object
-    json_stream << "{ \"timestamp\": " << std::chrono::high_resolution_clock::now().time_since_epoch().count() << ",";
+    json_stream << "{ \"seq_num\": " << md_client.get_last_seq_num() << ",";
+    json_stream << " \"timestamp\": " << std::chrono::high_resolution_clock::now().time_since_epoch().count() << ",";
     json_stream << " \"snapshot\": [";
 
     bool first_symbol = true;
@@ -46,7 +89,9 @@ void jsonify_snapshot(const ndfex::bots::MDClient& md_client, const ndfex::clear
         auto best_bid = md_client.get_best_bid(symbol);
         json_stream << "{\"symbol\": " << symbol
                     << ", \"best_bid\": " << best_bid.price
-                    << ", \"best_ask\": " << best_ask.price << "}";
+                    << ", \"best_bid_qty\": " << best_bid.quantity
+                    << ", \"best_ask\": " << best_ask.price
+                    << ", \"best_ask_qty\": " << best_ask.quantity << "}";
     }
 
     json_stream << "], \"positions\": [";
@@ -97,6 +142,24 @@ void jsonify_snapshot(const ndfex::bots::MDClient& md_client, const ndfex::clear
             }
         }
     }
+    json_stream << "], \"trades\": [";
+
+    // Add recent trades for homework validation
+    auto recent_trades = trade_collector.get_recent_trades();
+    bool first_trade = true;
+    for (const auto& trade : recent_trades) {
+        if (!first_trade) {
+            json_stream << ",";
+        }
+        first_trade = false;
+        json_stream << "{\"timestamp\": " << trade.timestamp
+                    << ", \"seq_num\": " << trade.seq_num
+                    << ", \"symbol\": " << trade.symbol
+                    << ", \"aggressor_side\": " << static_cast<int>(trade.aggressor_side)
+                    << ", \"quantity\": " << trade.quantity
+                    << ", \"price\": " << trade.price << "}";
+    }
+
     json_stream << "]}";
 
     // Get the final string
@@ -159,6 +222,11 @@ int main(int argc, char* argv[]) {
 
     ndfex::bots::MDClient md_client(mcast_ip, 12345, snapshot_ip, 12345, mcast_bind_ip, logger,
                                     true);
+
+    // Create trade collector for homework validation
+    TradeCollector trade_collector;
+    md_client.register_trade_summary_listener(&trade_collector);
+
     md_client.wait_for_snapshot();
 
     std::chrono::steady_clock::time_point last_published_ts = std::chrono::steady_clock::now();
@@ -172,7 +240,7 @@ int main(int argc, char* argv[]) {
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_published_ts).count();
         if (elapsed > 100) {
             std::string json;
-            jsonify_snapshot(md_client, clearing_client, json);
+            jsonify_snapshot(md_client, clearing_client, trade_collector, json);
 
             for (const auto& hdl : connections) {
                 try {

@@ -377,7 +377,7 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
                 }
 
                 if (trade_summary_listener) {
-                    trade_summary_listener->on_trade_summary(trade_summary->symbol, trade_summary->total_quantity, trade_summary->last_price,
+                    trade_summary_listener->on_trade_summary(last_md_seq_num, trade_summary->symbol, trade_summary->total_quantity, trade_summary->last_price,
                                                              trade_summary->aggressor_side);
                 }
           //      logger->info("Trade summary: symbol={}, aggressor_side={}, total_quantity={}, last_price={}", trade_summary->symbol, static_cast<int>(trade_summary->aggressor_side), trade_summary->total_quantity, trade_summary->last_price);

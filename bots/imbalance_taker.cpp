@@ -47,7 +47,8 @@ void ImbalanceTaker::process() {
     }
 }
 
-void ImbalanceTaker::on_trade_summary(uint32_t symbol, uint32_t quantity, int32_t price, md::SIDE aggressor_side) {
+void ImbalanceTaker::on_trade_summary(uint32_t seq_num, uint32_t symbol, uint32_t quantity, int32_t price, md::SIDE aggressor_side) {
+    (void)seq_num;
     (void)price;
     if (aggressor_side == md::SIDE::BUY) {
         imbalance_quantities[symbol] += quantity;
