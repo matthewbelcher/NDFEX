@@ -1,0 +1,12 @@
+[project]
+name = "homework-checker"
+version = "0.1.0"
+description = "NDFEX Homework Checker Server"
+requires-python = ">=3.8"
+dependencies = [
+    "aiohttp>=3.8.0",
+    "slack-bolt>=1.18.0",
+]
+
+[project.scripts]
+homework-checker = "server:main"

@@ -1,0 +1,7 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+*.db
+*.pid
+teams.csv
