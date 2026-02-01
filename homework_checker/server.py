@@ -73,6 +73,9 @@ class StateTracker:
         self.bbo_by_seq: LRUCache = LRUCache(maxsize=history_size)
         # Trade summaries indexed by (seq_num, symbol, side, qty, price) for dedup
         self.trades_seen: LRUCache = LRUCache(maxsize=history_size)
+        # Set of trade keys we've already counted for volume (dedup against repeated sends)
+        self.volume_counted_trades: set = set()
+        self.volume_counted_trades_maxsize = history_size * 2
         # Cumulative volume per symbol: symbol -> [(seq_num, cumulative_volume), ...]
         # Kept sorted by seq_num for binary search
         self.volume_history: Dict[int, list] = {1: [], 2: []}  # GOLD=1, BLUE=2
@@ -102,6 +105,7 @@ class StateTracker:
             self.current_bbo[symbol] = state
 
         # Store trades and accumulate volume using per-trade seq_num
+        # web_data sends its full trade buffer every ~100ms, so we must deduplicate
         for trade in trades:
             trade_seq = trade.get('seq_num', seq_num)  # Use trade's seq_num, fallback to snapshot seq_num
             key = (trade['symbol'], trade['aggressor_side'],
@@ -113,6 +117,23 @@ class StateTracker:
                 quantity=trade['quantity'],
                 price=trade['price']
             )
+
+            # Deduplicate trades for volume counting using a unique key per trade
+            volume_key = (
+                trade_seq,
+                trade['symbol'],
+                trade['aggressor_side'],
+                trade['quantity'],
+                trade['price'],
+                trade.get('timestamp', 0),
+            )
+            if volume_key in self.volume_counted_trades:
+                continue  # Already counted this trade
+
+            self.volume_counted_trades.add(volume_key)
+            # Evict old entries if the set grows too large
+            if len(self.volume_counted_trades) > self.volume_counted_trades_maxsize:
+                self.volume_counted_trades.clear()
 
             # Update cumulative volume history for this trade's symbol at its seq_num
             symbol = trade['symbol']
