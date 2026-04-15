@@ -2,6 +2,24 @@
 
 import { useEffect, useState, useRef } from "react";
 
+// Display names for each symbol id the exchange trades.
+// Must match matching_engine/matching_engine.cpp.
+const SYMBOL_NAMES = {
+  1: "GOLD",
+  2: "BLUE",
+  3: "KNAN",  // Keenan Hall
+  4: "STED",  // St. Edward's Hall
+  5: "FISH",  // Fisher Hall
+  6: "DILN",  // Dillon Hall
+  7: "SORN",  // Sorin Hall
+  8: "RYAN",  // Ryan Hall
+  9: "LYON",  // Lyons Hall
+  10: "WLSH", // Walsh Hall
+  11: "LEWI", // Lewis Hall
+  12: "BDIN", // Badin Hall
+  13: "UNDY", // Notre Dame Dorm ETF
+};
+
 // Don't call this function directly from render
 // Instead, we'll use useEffect to call it after the component renders
 function getOrCreateChart(timeSeries, symbolId) {
@@ -331,7 +349,7 @@ export default function Home() {
 
         return (
           <div key={symbol} className="chart-container" style={{ margin: '20px 0' }}>
-            <h2>Symbol: {symbol == 1 ? "GOLD" : "BLUE"}</h2>
+            <h2>Symbol: {SYMBOL_NAMES[symbol] || `Sym ${symbol}`}</h2>
             <div style={{ display: 'flex', gap: '20px' }}>
               <div style={{ flex: '1' }}>
                 <canvas id={`chart-${symbol}`} width="400" height="200"></canvas>

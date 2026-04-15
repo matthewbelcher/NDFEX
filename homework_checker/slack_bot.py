@@ -54,7 +54,22 @@ ME_LOG_DIR = os.environ.get("ME_LOG_DIR", os.path.join(os.path.dirname(__file__)
 USERS_FILE = os.environ.get("USERS_FILE", os.path.join(os.path.dirname(__file__), "..", "matching_engine", "users.txt"))
 TICK_SIZES = {1: 10, 2: 5}  # GOLD tick=10, BLUE tick=5
 
-SYMBOL_NAMES = {1: "GOLD", 2: "BLUE"}
+SYMBOL_NAMES = {
+    1: "GOLD",
+    2: "BLUE",
+    # UNDY ETF dorm components
+    3: "KNAN",  # Keenan Hall
+    4: "STED",  # St. Edward's Hall
+    5: "FISH",  # Fisher Hall
+    6: "DILN",  # Dillon Hall
+    7: "SORN",  # Sorin Hall
+    8: "RYAN",  # Ryan Hall
+    9: "LYON",  # Lyons Hall
+    10: "WLSH", # Walsh Hall
+    11: "LEWI", # Lewis Hall
+    12: "BDIN", # Badin Hall
+    13: "UNDY", # Notre Dame Dorm ETF
+}
 
 
 @dataclass
@@ -1211,6 +1226,9 @@ class HomeworkBot:
                         modified_order_ids.add(order_id)
                         if modify_count >= 2:
                             session.results["modify_2"] = True
+                        # Check if this order was already filled → modify_fill
+                        if order_id in filled_order_ids:
+                            session.results["modify_fill"] = True
                         continue
 
                     # Close (cancel) — only count if order was NOT filled

@@ -44,11 +44,20 @@ SnapshotWriter::SnapshotWriter(std::string ip, uint16_t port, std::string bind_i
         throw std::runtime_error("Failed to set socket to non-blocking");
     }
 
-    symbol_to_asks[1] = {};
-    symbol_to_bids[1] = {};
-
-    symbol_to_asks[2] = {};
-    symbol_to_bids[2] = {};
+    // Symbol ids the snapshot writer tracks. Must match the matching engine's
+    // symbol list. Add new ids here when the exchange grows.
+    //   1      GOLD
+    //   2      BLUE
+    //   3..12  UNDY ETF dorm components (KNAN, STED, FISH, DILN, SORN,
+    //          RYAN, LYON, WLSH, LEWI, BDIN)
+    //   13     UNDY ETF
+    static constexpr uint32_t EXPECTED_SYMBOLS[] = {
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
+    };
+    for (uint32_t sym : EXPECTED_SYMBOLS) {
+        symbol_to_asks[sym] = {};
+        symbol_to_bids[sym] = {};
+    }
 
     logger->info("Publishing to {}:{}", ip, port);
 

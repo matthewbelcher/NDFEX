@@ -84,18 +84,34 @@ void MDClient::register_trade_summary_listener(TradeSummaryListener* listener) {
 }
 
 void MDClient::wait_for_snapshot() {
+    // Symbols this client expects snapshots for. Add new symbol ids here when
+    // the matching engine's symbol list grows.
+    //   1      GOLD
+    //   2      BLUE
+    //   3..12  UNDY ETF dorm components (KNAN, STED, FISH, DILN, SORN,
+    //          RYAN, LYON, WLSH, LEWI, BDIN)
+    //   13     UNDY ETF
+    static constexpr uint32_t EXPECTED_SYMBOLS[] = {
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
+    };
+
     // store live updates in a buffer until we receive the snapshot
     std::unordered_map<uint32_t, ssize_t> symbol_to_bid_orders;
     std::unordered_map<uint32_t, ssize_t> symbol_to_ask_orders;
-    symbol_to_bid_orders[1] = -1;
-    symbol_to_ask_orders[1] = -1;
-    symbol_to_bid_orders[2] = -1;
-    symbol_to_ask_orders[2] = -1;
+    for (uint32_t sym : EXPECTED_SYMBOLS) {
+        symbol_to_bid_orders[sym] = -1;
+        symbol_to_ask_orders[sym] = -1;
+        snapshot_complete[sym] = false;
+    }
 
-    snapshot_complete[1] = false;
-    snapshot_complete[2] = false;
+    auto all_complete = [this]() {
+        for (uint32_t sym : EXPECTED_SYMBOLS) {
+            if (!snapshot_complete[sym]) return false;
+        }
+        return true;
+    };
 
-    while (!snapshot_complete[1] || !snapshot_complete[2]) {
+    while (!all_complete()) {
 
         ssize_t len = recvfrom(live_fd, buf, sizeof(buf), 0, nullptr, nullptr);
         if (len < 0) {
@@ -179,8 +195,8 @@ void MDClient::wait_for_snapshot() {
         }
     }
 
-    // apply snapshot orders to the order book
-    for (uint32_t symbol = 1; symbol <= 2; ++symbol) {
+    // apply snapshot orders to the order book (every symbol we expect)
+    for (uint32_t symbol : EXPECTED_SYMBOLS) {
         for (auto& new_order : snapshot_buffer[symbol]) {
             if (symbol_to_order_book.find(new_order.symbol) == symbol_to_order_book.end()) {
                 symbol_to_order_book[new_order.symbol] = new OrderBook(logger);
@@ -266,22 +282,29 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
         }
 
         if (header->seq_num > last_md_seq_num + 1) {
-            logger->error("Sequence number out of order: expected={}, got={}", last_md_seq_num + 1, static_cast<uint32_t>(header->seq_num));
-
-            if (recover_on_drops) {
-                logger->info("Restarting snapshot recovery process");
-                symbol_to_order_book.clear();
-                order_to_symbol.clear();
-                live_buffer.clear();
-                snapshot_buffer.clear();
-
-                snapshot_complete.clear();
-                last_snapshot_seq_num = 0;
-
-                // wait for a new snapshot
-                wait_for_snapshot();
-                logger->info("Snapshot recovery complete");
+            if (!recover_on_drops) {
+                logger->error("Sequence number gap: expected={}, got={}; recovery disabled",
+                              last_md_seq_num + 1, static_cast<uint32_t>(header->seq_num));
+                logger->flush();
+                throw std::runtime_error("Market data sequence gap with recovery disabled");
             }
+
+            logger->warn("Sequence number gap: expected={}, got={}; restarting snapshot recovery",
+                         last_md_seq_num + 1, static_cast<uint32_t>(header->seq_num));
+
+            for (auto& [symbol, order_book] : symbol_to_order_book) {
+                delete order_book;
+            }
+            symbol_to_order_book.clear();
+            order_to_symbol.clear();
+            live_buffer.clear();
+            snapshot_buffer.clear();
+
+            snapshot_complete.clear();
+            last_snapshot_seq_num = 0;
+
+            wait_for_snapshot();
+            logger->info("Snapshot recovery complete");
             return;
 
         } else if (header->seq_num <= last_md_seq_num) {

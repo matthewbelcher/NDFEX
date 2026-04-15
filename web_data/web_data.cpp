@@ -62,6 +62,17 @@ private:
 };
 
 
+// Symbol ids the web_data serializer reports on. Must match the matching
+// engine's symbol list.
+//   1      GOLD
+//   2      BLUE
+//   3..12  UNDY ETF dorm components (KNAN, STED, FISH, DILN, SORN,
+//          RYAN, LYON, WLSH, LEWI, BDIN)
+//   13     UNDY ETF
+static constexpr int EXPECTED_SYMBOLS[] = {
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
+};
+
 void jsonify_snapshot(const ndfex::bots::MDClient& md_client, const ndfex::clearing::ClearingClient& clearing,
                       TradeCollector& trade_collector, std::string& json) {
 
@@ -79,7 +90,7 @@ void jsonify_snapshot(const ndfex::bots::MDClient& md_client, const ndfex::clear
     json_stream << " \"snapshot\": [";
 
     bool first_symbol = true;
-    for (const auto& symbol : {1, 2}) {
+    for (const auto& symbol : EXPECTED_SYMBOLS) {
         if (!first_symbol) {
             json_stream << ",";
         }
@@ -97,7 +108,7 @@ void jsonify_snapshot(const ndfex::bots::MDClient& md_client, const ndfex::clear
     json_stream << "], \"positions\": [";
 
     bool first_position = true;
-    for (const auto& symbol : {1, 2}) {
+    for (const auto& symbol : EXPECTED_SYMBOLS) {
         auto best_ask = md_client.get_best_ask(symbol);
         auto best_bid = md_client.get_best_bid(symbol);
 

@@ -13,6 +13,7 @@ add_executable(bot_runner
     bot_runner.cpp
     ${BOT_COMMON_SOURCES}
     random_walk_fair_value.cpp
+    basket_fair_value.cpp
     fair_value_mm.cpp
     random_taker.cpp
     fair_value_stack_mm.cpp

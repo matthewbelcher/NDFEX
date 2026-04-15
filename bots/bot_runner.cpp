@@ -6,6 +6,7 @@
 #include "matching_engine/symbol_definition.H"
 #include "fair_value.H"
 #include "random_walk_fair_value.H"
+#include "basket_fair_value.H"
 #include "fair_value_mm.H"
 #include "fair_value_stack_mm.H"
 #include "random_taker.H"
@@ -61,6 +62,22 @@ int main(int argc, char* argv[]) {
         {13, 10, 1, 1000, 10000000, 0}, // UNDY - Notre Dame Dorm ETF
     };
 
+    // create market data client first so the UNDY BasketFairValue can read
+    // component mid-prices out of its order books
+    ndfex::bots::MDClient md_client(mcast_ip, 12345, snapshot_ip, 12345, mcast_bind_ip, logger,
+                                    /*recover_on_drops=*/true);
+    md_client.wait_for_snapshot();
+
+    // UNDY = 1 share of each of the 10 dorms (symbols 3..12).
+    // The BasketFairValue reads dorm mids out of md_client's order books and
+    // sums them — it deliberately does NOT share the dorms' RandomWalkFairValue
+    // objects, so UNDY's quotes track the component market prices, not the
+    // underlying random walk.
+    std::vector<std::pair<uint32_t, int32_t>> undy_components = {
+        {3, 1}, {4, 1}, {5, 1}, {6, 1}, {7, 1},
+        {8, 1}, {9, 1}, {10, 1}, {11, 1}, {12, 1},
+    };
+
     std::vector<ndfex::bots::FairValue*> fair_values{
         new ndfex::bots::RandomWalkFairValue(1200, symbols[0]),  // GOLD
         new ndfex::bots::RandomWalkFairValue(900, symbols[1]),   // BLUE
@@ -75,24 +92,24 @@ int main(int argc, char* argv[]) {
         new ndfex::bots::RandomWalkFairValue(560, symbols[9]),   // WLSH
         new ndfex::bots::RandomWalkFairValue(570, symbols[10]),  // LEWI
         new ndfex::bots::RandomWalkFairValue(590, symbols[11]),  // BDIN
-        // UNDY ETF - fair value = sum of underlyings (~5550)
-        new ndfex::bots::RandomWalkFairValue(5550, symbols[12]), // UNDY
+        // UNDY ETF - computed from component market mid-prices
+        new ndfex::bots::BasketFairValue(md_client, undy_components,
+                                         /*initial_fv=*/5550, logger),
     };
 
-    // create market data client
-    ndfex::bots::MDClient md_client(mcast_ip, 12345, snapshot_ip, 12345, mcast_bind_ip, logger);
-    md_client.wait_for_snapshot();
-
-    // Variances for each market maker (one value per symbol)
+    // Variances for each market maker (one value per symbol).
+    // UNDY (last column) is always 0: its fair value is computed from the
+    // component market prices, so biasing it would mean "quote the basket
+    // away from the basket" which we never want.
     // Format: {GOLD, BLUE, KNAN, STED, FISH, DILN, SORN, RYAN, LYON, WLSH, LEWI, BDIN, UNDY}
     std::vector<std::vector<int32_t>> variances = {
-        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},      // Neutral
-        {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 10},     // Slightly bullish
-        {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -10},  // Slightly bearish
-        {1, 0, 2, 0, 1, 0, 2, 0, 1, 0, 2, 0, 5},      // Mixed
-        {2, 0, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 10},     // Alternating
-        {0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 5},      // Dorm focused
-        {3, 0, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, 0}, // Contrarian
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},       // Neutral
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0},       // Slightly bullish
+        {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 0},  // Slightly bearish
+        {1, 0, 2, 0, 1, 0, 2, 0, 1, 0, 2, 0, 0},       // Mixed
+        {2, 0, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0},       // Alternating
+        {0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0},       // Dorm focused
+        {3, 0, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, 0},  // Contrarian
     };
 
     uint32_t last_order_id = 1;
@@ -117,6 +134,17 @@ int main(int argc, char* argv[]) {
     while (true) {
         client1.process();
         md_client.process();
+
+        // Global OE rate gate: if this bot has already written
+        // max_msgs_per_sec messages to the wire in the trailing 1-second
+        // window, skip all order-emitting work this tick. We still read
+        // fills/acks and MD updates, so the bot stays in sync; we just
+        // stop generating new traffic until the sliding window opens up.
+        // This keeps us below the matching engine's MAX_MSGS_PER_SECOND
+        // limit and prevents the OE TCP socket from being torn down.
+        if (!client1.can_send()) {
+            continue;
+        }
 
         for (auto& mm : market_makers) {
             mm.process();
