@@ -28,6 +28,37 @@ SNAPSHOT_PORT="${SNAPSHOT_PORT:-12345}"
 # Bot selection
 BOT_TYPE="${BOT_TYPE:-bot_runner}"
 
+# Onload (Solarflare kernel-bypass) integration.
+# Components listed in ONLOAD_COMPONENTS will be launched under `onload` when the
+# kernel module is loaded (i.e. /dev/onload exists). Set USE_ONLOAD=no to disable,
+# or override ONLOAD_COMPONENTS to restrict the set.
+USE_ONLOAD="${USE_ONLOAD:-auto}"
+ONLOAD_COMPONENTS="${ONLOAD_COMPONENTS:-matching_engine md_snapshots bots web_data}"
+ONLOAD_PROFILE="${ONLOAD_PROFILE:-latency}"
+
+# Same-host multicast loopback under onload.
+# By default onload accelerates multicast TX but does NOT loop packets back to
+# receivers in other onload stacks on the same machine — so a matching_engine
+# publishing under onload is invisible to an onload-accelerated bot_runner /
+# web_data on the same box. ONLOAD_MCAST_LOOP selects how to recover loopback:
+#
+#   yes  (default) - EF_FORCE_SEND_MULTICAST=0
+#                    Onload declines to accelerate multicast send on sockets
+#                    that have IP_MULTICAST_LOOP enabled (matching_engine's
+#                    publisher socket does). Mcast TX goes via the kernel
+#                    stack so kernel loopback delivers to same-host receivers.
+#                    Works on any Solarflare NIC. Costs matching_engine's
+#                    mcast sends the onload fast path (OE TCP is unaffected).
+#
+#   hw             - EF_MCAST_SEND=2, EF_MCAST_RECV_HW_LOOP=1
+#                    Keep mcast TX accelerated and use NIC hardware loopback
+#                    between onload stacks. Requires a 7000-series or newer
+#                    Solarflare NIC AND a firmware variant with loopback
+#                    support enabled (configure via sfboot).
+#
+#   no             - do nothing; same-host mcast will not flow under onload
+ONLOAD_MCAST_LOOP="${ONLOAD_MCAST_LOOP:-yes}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -62,14 +93,24 @@ Options:
     --no-snapshots        Don't start snapshot service
     --no-web-data         Don't start web_data WebSocket server
     --no-homework         Don't start homework checker
-    --with-etf            Start the ETF service (provides dashboard + create/redeem API)
+    --no-etf              Don't start the ETF service (UNDY create/redeem API)
     --add-mcast-route     Add 239.0.0.0/8 route via MCAST_BIND_IP
+    --no-onload-mcast-loop Do not set EF_MCAST_SEND/EF_MCAST_RECV_HW_LOOP
+                          (under onload, same-host mcast will not flow)
     -h, --help            Show this help message
 
 Environment Variables:
     BIND_IP, MCAST_IP, SNAPSHOT_MCAST_IP, CLEARING_MCAST_IP, MCAST_BIND_IP
     OE_PORT, MD_PORT, CLEARING_PORT, SNAPSHOT_PORT
     BOT_TYPE
+    USE_ONLOAD (auto|yes|no, default auto)
+    ONLOAD_COMPONENTS (default: matching_engine md_snapshots bots web_data)
+    ONLOAD_PROFILE (default: latency)
+    ONLOAD_MCAST_LOOP (yes|hw|no, default yes) - same-host mcast under onload
+                      yes: kernel fallback via EF_FORCE_SEND_MULTICAST=0
+                      hw:  EF_MCAST_SEND=2 + EF_MCAST_RECV_HW_LOOP=1
+                           (requires sfboot firmware loopback variant)
+                      no:  leave onload defaults (mcast will not flow)
 
 Examples:
     $0 start
@@ -180,6 +221,12 @@ get_running_pid() {
                     return 0
                 fi
                 ;;
+            etf_service)
+                if [[ "$cmdline" == "python3" || "$cmdline" == "python" || "$cmdline" == "uv" ]]; then
+                    echo "$pid"
+                    return 0
+                fi
+                ;;
         esac
     fi
 
@@ -192,11 +239,28 @@ get_running_pid() {
         web_data) pattern="web_data 239" ;;
         homework_checker) pattern="server.py.*--port" ;;
         slack_bot) pattern="slack_bot.py" ;;
+        etf_service) pattern="etf_service/app.py" ;;
     esac
 
     if [[ -n "$pattern" ]]; then
         pgrep -f "$pattern" 2>/dev/null | head -1
     fi
+}
+
+onload_available() {
+    [[ "$USE_ONLOAD" == "no" ]] && return 1
+    [[ -e /dev/onload ]] || return 1
+    command -v onload >/dev/null 2>&1 || return 1
+    return 0
+}
+
+onload_wanted_for() {
+    local name="$1"
+    local c
+    for c in $ONLOAD_COMPONENTS; do
+        if [[ "$c" == "$name" ]]; then return 0; fi
+    done
+    return 1
 }
 
 start_component() {
@@ -215,10 +279,22 @@ start_component() {
 
     check_executable "$exe"
 
-    log_info "Starting $name..."
+    local launcher=()
+    if onload_available && onload_wanted_for "$name"; then
+        launcher=(onload --profile="$ONLOAD_PROFILE")
+        log_info "Starting $name under onload (profile=$ONLOAD_PROFILE)..."
+    elif [[ "$USE_ONLOAD" == "yes" ]] && onload_wanted_for "$name"; then
+        log_error "USE_ONLOAD=yes but onload is unavailable (module loaded? /dev/onload present?)"
+        return 1
+    else
+        if onload_wanted_for "$name" && [[ ! -e /dev/onload ]]; then
+            log_warn "$name: onload requested but /dev/onload missing - using kernel stack"
+        fi
+        log_info "Starting $name..."
+    fi
 
     # Start the process in background, redirect outside subshell so exec works properly
-    (cd "$cwd" && exec "$exe" $args) > "${LOG_DIR}/${name}.log" 2>&1 &
+    (cd "$cwd" && exec "${launcher[@]}" "$exe" $args) > "${LOG_DIR}/${name}.log" 2>&1 &
     local pid=$!
 
     # Give it a moment to start
@@ -271,6 +347,7 @@ stop_component() {
         web_data) pattern="web_data 239" ;;
         homework_checker) pattern="server.py.*--port" ;;
         slack_bot) pattern="slack_bot.py" ;;
+        etf_service) pattern="etf_service/app.py" ;;
     esac
 
     if [[ -n "$pattern" ]]; then
@@ -394,9 +471,32 @@ run_viewer() {
     (cd "${SCRIPT_DIR}/viewer" && "$VIEWER_BIN" "$MCAST_IP" "$SNAPSHOT_MCAST_IP" "$MCAST_BIND_IP")
 }
 
+apply_onload_env() {
+    case "$ONLOAD_MCAST_LOOP" in
+        yes)
+            export EF_FORCE_SEND_MULTICAST=0
+            log_info "Onload multicast loopback: kernel fallback (EF_FORCE_SEND_MULTICAST=0)"
+            ;;
+        hw)
+            export EF_MCAST_SEND=2
+            export EF_MCAST_RECV_HW_LOOP=1
+            log_info "Onload multicast loopback: hw (EF_MCAST_SEND=2, EF_MCAST_RECV_HW_LOOP=1)"
+            log_warn "hw mode requires sfboot firmware variant with multicast loopback enabled"
+            ;;
+        no)
+            log_info "Onload multicast loopback: disabled (same-host mcast will not flow under onload)"
+            ;;
+        *)
+            log_error "Unknown ONLOAD_MCAST_LOOP value: $ONLOAD_MCAST_LOOP (expected yes|hw|no)"
+            exit 1
+            ;;
+    esac
+}
+
 start_all() {
     ensure_dirs
     resolve_binaries
+    apply_onload_env
     if [[ "$ADD_MCAST_ROUTE" == "yes" ]]; then
         ensure_mcast_route
     fi
@@ -445,14 +545,14 @@ start_all() {
     fi
 
     # 6. Start ETF Service (Python - provides dashboard + create/redeem API)
-    if [[ "$START_ETF" == "yes" ]]; then
-        if command -v python3 &> /dev/null; then
+    if [[ "$START_ETF" != "no" ]]; then
+        if command -v uv &> /dev/null; then
             log_info "Starting ETF service..."
-            (cd "${SCRIPT_DIR}" && python3 -u etf_service/app.py \
-                "$MCAST_IP" "$CLEARING_MCAST_IP" "$MCAST_BIND_IP" \
-                > "${LOG_DIR}/etf_service.log" 2>&1) &
+            (cd "${SCRIPT_DIR}/etf_service" && exec uv run app.py \
+                "$MCAST_IP" "$CLEARING_MCAST_IP" "$MCAST_BIND_IP") \
+                > "${LOG_DIR}/etf_service.log" 2>&1 &
             local pid=$!
-            sleep 1
+            sleep 2
             if kill -0 "$pid" 2>/dev/null; then
                 save_pid "etf_service" "$pid"
                 log_info "ETF service started (PID: $pid)"
@@ -460,7 +560,7 @@ start_all() {
                 log_error "ETF service failed to start. Check ${LOG_DIR}/etf_service.log"
             fi
         else
-            log_warn "Python3 not found, skipping ETF service"
+            log_warn "uv not found, skipping ETF service"
         fi
     fi
 
@@ -564,7 +664,7 @@ START_BOTS="yes"
 START_SNAPSHOTS="yes"
 START_WEB_DATA="yes"
 START_HOMEWORK="yes"
-START_ETF="no"
+START_ETF="yes"
 ADD_MCAST_ROUTE="no"
 
 while [[ $# -gt 0 ]]; do
@@ -625,12 +725,16 @@ while [[ $# -gt 0 ]]; do
             START_HOMEWORK="no"
             shift
             ;;
-        --with-etf)
-            START_ETF="yes"
+        --no-etf)
+            START_ETF="no"
             shift
             ;;
         --add-mcast-route)
             ADD_MCAST_ROUTE="yes"
+            shift
+            ;;
+        --no-onload-mcast-loop)
+            ONLOAD_MCAST_LOOP="no"
             shift
             ;;
         -h|--help)

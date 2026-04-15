@@ -1,0 +1,11 @@
+[project]
+name = "etf-service"
+version = "0.1.0"
+description = "NDFEX ETF service (UNDY dashboard + create/redeem API)"
+requires-python = ">=3.8"
+dependencies = [
+    "flask>=2.0.0",
+    # app.py uses the legacy websockets.serve() + loop.run_until_complete()
+    # pattern, which was removed in websockets 12.x. Pin to the API era.
+    "websockets>=10.0,<12.0",
+]
