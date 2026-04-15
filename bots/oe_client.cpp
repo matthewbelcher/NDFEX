@@ -1,13 +1,53 @@
 #include "oe_client.H"
+#include "matching_engine/utils.H"
 
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <signal.h>
 
 namespace ndfex::bots {
 
-OEClient::OEClient(user_info user, std::string ip, uint16_t port, std::shared_ptr<spdlog::logger> logger)
-    : user(user), ip(ip), port(port), logger(logger) {}
+namespace {
+// Install a process-wide SIGPIPE handler on first OEClient construction so
+// that a closed OE TCP socket (e.g. when the matching engine rate-limits us
+// and tears down the connection) produces EPIPE on write() instead of a
+// default SIGPIPE that kills the whole bot_runner process.
+struct SigpipeIgnorer {
+    SigpipeIgnorer() {
+        struct sigaction sa{};
+        sa.sa_handler = SIG_IGN;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = 0;
+        sigaction(SIGPIPE, &sa, nullptr);
+    }
+};
+}  // namespace
+
+OEClient::OEClient(user_info user, std::string ip, uint16_t port, std::shared_ptr<spdlog::logger> logger,
+                   size_t max_msgs_per_sec)
+    : user(user), ip(ip), port(port), logger(logger), max_msgs_per_sec(max_msgs_per_sec) {
+    static SigpipeIgnorer sigpipe_ignorer;
+    (void)sigpipe_ignorer;
+}
+
+void OEClient::prune_send_window(uint64_t now_ns) {
+    constexpr uint64_t ONE_SECOND_NS = 1'000'000'000ULL;
+    while (!send_timestamps.empty() && now_ns - send_timestamps.front() > ONE_SECOND_NS) {
+        send_timestamps.pop_front();
+    }
+}
+
+void OEClient::record_send() {
+    uint64_t now = nanotime();
+    send_timestamps.push_back(now);
+    prune_send_window(now);
+}
+
+bool OEClient::can_send() {
+    prune_send_window(nanotime());
+    return send_timestamps.size() < max_msgs_per_sec;
+}
 
 int32_t OEClient::get_position(uint32_t symbol) const {
     auto it = positions.find(symbol);
@@ -107,8 +147,9 @@ void OEClient::send_order(uint32_t symbol, uint64_t order_id, md::SIDE side, uin
     ssize_t len = write(sock_fd, &order, sizeof(order));
     if (len == -1) {
         logger->error("Failed to send order: {}", strerror(errno));
+        return;
     }
-
+    record_send();
 }
 
 void OEClient::cancel_order(uint64_t order_id) {
@@ -124,7 +165,9 @@ void OEClient::cancel_order(uint64_t order_id) {
     ssize_t len = write(sock_fd, &order, sizeof(order));
     if (len == -1) {
         logger->error("Failed to send cancel order: {}", strerror(errno));
+        return;
     }
+    record_send();
 }
 
 void OEClient::modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price) {
@@ -143,7 +186,9 @@ void OEClient::modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity,
     ssize_t len = write(sock_fd, &order, sizeof(order));
     if (len == -1) {
         logger->error("Failed to send modify order: {}", strerror(errno));
+        return;
     }
+    record_send();
 }
 
 void OEClient::process() {
