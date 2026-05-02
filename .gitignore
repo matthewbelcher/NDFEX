@@ -70,3 +70,28 @@ cmake_install.cmake
 .env
 *.env
 !*.env.example
+
+# Sensitive student data — never commit. Sourced from Canvas.
+student_passwords.csv
+studentsids.csv
+
+# Python bytecode and virtualenvs
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Spdlog files anywhere in the tree (we already ignore logs/ subdirs above,
+# but the rotate_logs script also drops them next to source dirs)
+*.log
+
+# Network captures (mcast.pcap etc.)
+*.pcap
+*.pcapng
+
+# Generated PnL reports from scripts/replay_pnl.py
+pnl_aggregate.csv
+pnl_session_*.csv
+
+# Local web_data binary (built by web_data/Makefile, not under web_data/out/)
+web_data/web_data
