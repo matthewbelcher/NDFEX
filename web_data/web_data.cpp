@@ -13,6 +13,8 @@
 #include <spdlog/async.h>
 #include <spdlog/sinks/daily_file_sink.h>
 
+#include "adjustment_log_reader.H"
+
 #define ASIO_STANDALONE
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
@@ -73,13 +75,16 @@ static constexpr int EXPECTED_SYMBOLS[] = {
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13
 };
 
-void jsonify_snapshot(const ndfex::bots::MDClient& md_client, const ndfex::clearing::ClearingClient& clearing,
+void jsonify_snapshot(const ndfex::bots::MDClient& md_client, ndfex::clearing::ClearingClient& clearing,
                       TradeCollector& trade_collector, std::string& json) {
 
     // get positions and P&L from clearing client
     auto positions = clearing.get_positions();
     auto raw_pnl = clearing.get_raw_pnl();
     auto get_volume = clearing.get_volume();
+    auto pos_breached = clearing.get_position_limit_breached();
+    auto pnl_breached = clearing.get_pnl_breached();
+    auto frozen_pnl = clearing.get_frozen_pnl();
 
     // Use string stream instead of directly manipulating string
     std::ostringstream json_stream;
@@ -107,50 +112,124 @@ void jsonify_snapshot(const ndfex::bots::MDClient& md_client, const ndfex::clear
 
     json_stream << "], \"positions\": [";
 
+    // First pass: compute per-client per-symbol PnL, apply position breach clamping,
+    // then check aggregate PnL for min PnL breach.
+    // We need to iterate clients first to compute totals, then emit JSON.
+
+    // Collect all client IDs
+    std::set<uint32_t> client_ids;
+    for (const auto& client : positions) {
+        client_ids.insert(client.first);
+    }
+
+    // Per-client per-symbol PnL and breach info. unclamped_pnl preserves the
+    // pre-clamp mark-to-market PnL so the frontend can show "what it would
+    // have been" alongside the locked value on breached symbols.
+    struct SymbolEntry {
+        int32_t position;
+        double pnl;
+        double unclamped_pnl;
+        uint32_t vol;
+        bool pos_breach;
+    };
+    std::unordered_map<uint32_t, std::unordered_map<uint32_t, SymbolEntry>> client_entries;
+
+    for (auto client_id : client_ids) {
+        bool is_exempt = ndfex::clearing::EXEMPT_CLIENTS.count(client_id) > 0;
+
+        double total_pnl = 0.0;
+
+        for (const auto& symbol : EXPECTED_SYMBOLS) {
+            auto best_ask = md_client.get_best_ask(symbol);
+            auto best_bid = md_client.get_best_bid(symbol);
+
+            auto pos_it = positions.at(client_id).find(symbol);
+            int32_t pos = 0;
+            double pnl = 0.0;
+            uint32_t vol = 0;
+            bool sym_pos_breach = false;
+
+            if (pos_it != positions.at(client_id).end()) {
+                pos = pos_it->second;
+                if (pos >= 0) {
+                    pnl = raw_pnl.at(client_id).at(symbol) + (best_bid.price * pos);
+                } else {
+                    pnl = raw_pnl.at(client_id).at(symbol) + (best_ask.price * pos);
+                }
+                vol = get_volume.at(client_id).at(symbol);
+                pnl -= vol * 0.05;
+            }
+
+            double unclamped_pnl = pnl;
+
+            // Check position breach and clamp PnL if breached (non-exempt only)
+            if (!is_exempt) {
+                auto pb_client_it = pos_breached.find(client_id);
+                if (pb_client_it != pos_breached.end()) {
+                    auto pb_sym_it = pb_client_it->second.find(symbol);
+                    if (pb_sym_it != pb_client_it->second.end() && pb_sym_it->second) {
+                        sym_pos_breach = true;
+                        // Per competition rule: penalized_pnl = min(0, symbol_pnl).
+                        // Positive PnL is wiped on a breached symbol; losses are
+                        // kept. The clamp prevents teams from profiting on a
+                        // symbol where they breached the position limit.
+                        if (pnl > 0.0) {
+                            pnl = 0.0;
+                        }
+                    }
+                }
+            }
+
+            client_entries[client_id][symbol] = {pos, pnl, unclamped_pnl, vol, sym_pos_breach};
+            total_pnl += pnl;
+        }
+
+        // Check min PnL breach (non-exempt only)
+        if (!is_exempt && !pnl_breached[client_id] && total_pnl < ndfex::clearing::MIN_PNL) {
+            clearing.set_pnl_breached(client_id, total_pnl);
+            pnl_breached[client_id] = true;
+            frozen_pnl[client_id] = total_pnl;
+        }
+    }
+
+    // Second pass: emit JSON, applying PnL freeze if breached
     bool first_position = true;
     for (const auto& symbol : EXPECTED_SYMBOLS) {
-        auto best_ask = md_client.get_best_ask(symbol);
-        auto best_bid = md_client.get_best_bid(symbol);
-
-        for (const auto& client : positions) {
+        for (auto client_id : client_ids) {
             if (!first_position) {
                 json_stream << ",";
             }
             first_position = false;
 
-            auto client_id = client.first;
-            auto position = client.second.find(symbol);
+            bool is_exempt = ndfex::clearing::EXEMPT_CLIENTS.count(client_id) > 0;
+            const auto& entry = client_entries[client_id][symbol];
+            bool client_pnl_breached = !is_exempt && pnl_breached.count(client_id) && pnl_breached[client_id];
 
-            if (position != client.second.end()) {
-                if (position->second >= 0) {
-                    // mark the position to the bid price
-                    double pnl = raw_pnl.at(client_id).at(symbol) + (best_bid.price * position->second);
-                    // adjust pnl for fees
-                    pnl -= get_volume.at(client_id).at(symbol) * 0.05;
+            json_stream << "{\"client_id\": " << client_id
+                        << ", \"symbol\": " << symbol
+                        << ", \"position\": " << entry.position
+                        << ", \"pnl\": " << entry.pnl
+                        << ", \"volume\": " << entry.vol
+                        << ", \"position_breach\": " << (entry.pos_breach ? "true" : "false")
+                        << ", \"pnl_breach\": " << (client_pnl_breached ? "true" : "false");
 
-                    json_stream << "{\"client_id\": " << client_id
-                                << ", \"symbol\": " << symbol
-                                << ", \"position\": " << position->second
-                                << ", \"pnl\": " << pnl
-                                << ", \"volume\": " << get_volume.at(client_id).at(symbol) << "}";
-                } else if (position->second < 0) {
-                    // mark the position to the ask price
-                    double pnl = raw_pnl.at(client_id).at(symbol) + (best_ask.price * position->second);
-
-                    // adjust pnl for fees
-                    pnl -= get_volume.at(client_id).at(symbol) * 0.05;
-
-                    json_stream << "{\"client_id\": " << client_id
-                                << ", \"symbol\": " << symbol
-                                << ", \"position\": " << position->second
-                                << ", \"pnl\": " << pnl
-                                << ", \"volume\": " << get_volume.at(client_id).at(symbol) << "}";
-                }
-            } else {
-                json_stream << "{\"client_id\": " << client_id
-                            << ", \"symbol\": " << symbol
-                            << ", \"position\": 0, \"pnl\": 0, \"volume\": 0}";
+            // Include the unclamped (would-be) PnL only when the position
+            // limit has been breached on this symbol — that's when the
+            // frontend wants to show "0 (X)" with the unclamped value beside
+            // the locked one.
+            if (entry.pos_breach) {
+                json_stream << ", \"unclamped_pnl\": " << entry.unclamped_pnl;
             }
+
+            // If PnL breached, override pnl with frozen value distributed proportionally
+            // Actually, the frontend sums per-symbol PnL for the total.
+            // When pnl_breached, we want the total to show frozen_pnl.
+            // Simplest: include frozen_total in each row so frontend can use it.
+            if (client_pnl_breached) {
+                json_stream << ", \"frozen_pnl\": " << frozen_pnl[client_id];
+            }
+
+            json_stream << "}";
         }
     }
     json_stream << "], \"trades\": [";
@@ -191,19 +270,24 @@ int main(int argc, char* argv[]) {
     auto logger = spdlog::daily_logger_mt<spdlog::async_factory>("async_logger", "logs/web_data");
 
     connections connections;
+    // Protects `connections` against concurrent mutation by the websocketpp
+    // server thread (open/close handlers) and reads from the main broadcast
+    // loop. Without this, the red-black tree can be restructured mid-iteration
+    // and the broadcast loop walks a freed node (SIGSEGV in _Rb_tree_increment).
+    std::mutex connections_mutex;
 
     web_server server;
     server.init_asio();
 
-    server.set_open_handler([&connections](websocketpp::connection_hdl hdl) {
+    server.set_open_handler([&connections, &connections_mutex](websocketpp::connection_hdl hdl) {
         std::cout << "New connection opened" << std::endl;
-        // Send snapshot data to the new connection
+        std::lock_guard<std::mutex> lock(connections_mutex);
         connections.insert(hdl);
     });
 
-    server.set_close_handler([&connections](websocketpp::connection_hdl hdl) {
+    server.set_close_handler([&connections, &connections_mutex](websocketpp::connection_hdl hdl) {
         std::cout << "Connection closed" << std::endl;
-        // Handle connection close
+        std::lock_guard<std::mutex> lock(connections_mutex);
         connections.erase(hdl);
     });
 
@@ -212,7 +296,7 @@ int main(int argc, char* argv[]) {
         // Handle incoming messages
     });
 
-    server.set_validate_handler([](websocketpp::connection_hdl hdl) {
+    server.set_validate_handler([](websocketpp::connection_hdl /*hdl*/) {
         // Validate the connection
         return true; // Accept all connections for simplicity
     });
@@ -240,12 +324,19 @@ int main(int argc, char* argv[]) {
 
     md_client.wait_for_snapshot();
 
+    // Tail etf_service's create/redeem log so leaderboard positions reflect
+    // ETF adjustments. Constructor replays the file on startup so we recover
+    // every prior adjustment across web_data restarts.
+    ndfex::clearing::AdjustmentLogReader adjustment_log_reader(
+        "../logs/etf_adjustments.log", clearing_client, logger);
+
     std::chrono::steady_clock::time_point last_published_ts = std::chrono::steady_clock::now();
 
     std::cout << "Starting MDClient" << std::endl;
     while (true) {
         md_client.process();
         clearing_client.process();
+        adjustment_log_reader.process();
 
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_published_ts).count();
@@ -253,18 +344,23 @@ int main(int argc, char* argv[]) {
             std::string json;
             jsonify_snapshot(md_client, clearing_client, trade_collector, json);
 
-            for (const auto& hdl : connections) {
+            // Snapshot the connection set under the lock, then iterate the
+            // copy lock-free. server.send() can synchronously invoke error
+            // callbacks which re-enter close_handler → erase() on this set,
+            // so holding the lock across send() would deadlock.
+            decltype(connections) connections_copy;
+            {
+                std::lock_guard<std::mutex> lock(connections_mutex);
+                connections_copy = connections;
+            }
+
+            for (const auto& hdl : connections_copy) {
                 try {
-                    // Check if connection is still open before sending
                     if (server.get_con_from_hdl(hdl)->get_state() == websocketpp::session::state::open) {
                         server.send(hdl, json, websocketpp::frame::opcode::text);
                     }
                 } catch (const websocketpp::exception& e) {
-                    // Log the exception and continue with other connections
                     std::cerr << "Error sending to connection: " << e.what() << std::endl;
-
-                    // You may want to remove invalid connections here if appropriate
-                    // connections.erase(hdl);
                 }
             }
 

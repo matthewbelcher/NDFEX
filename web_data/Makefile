@@ -3,7 +3,7 @@ CXXFLAGS = -g -std=c++17 -Wall -Wextra -I/usr/local/include -I../ -I../3rdparty/
 LDFLAGS = -L/usr/local/lib -lpthread
 
 TARGET = web_data
-SRCS = web_data.cpp ../bots/md_client.cpp ../bots/order_book.cpp clearing_client.cpp
+SRCS = web_data.cpp ../bots/md_client.cpp ../bots/order_book.cpp clearing_client.cpp adjustment_log_reader.cpp
 OBJS = $(SRCS:.cpp=.o)
 
 all: $(TARGET)
