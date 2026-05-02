@@ -198,7 +198,17 @@ get_running_pid() {
                 fi
                 ;;
             bots)
+                # Accept any bot binary for the live-pidfile path — this way
+                # `status` works even when the user doesn't re-pass --bot-type.
+                # The fallback pgrep (below) is BOT_TYPE-pinned so it won't
+                # cross-match liquidity_bots.
                 if [[ "$cmdline" =~ ^(bot_runner|stable_bot_ru|smarter_bots|reject_bot)$ ]]; then
+                    echo "$pid"
+                    return 0
+                fi
+                ;;
+            liquidity_bots)
+                if [[ "$cmdline" == "bot_runner" ]]; then
                     echo "$pid"
                     return 0
                 fi
@@ -235,11 +245,12 @@ get_running_pid() {
     case "$name" in
         matching_engine) pattern="/matching_engine " ;;
         md_snapshots) pattern="/md_snapshots " ;;
-        bots) pattern="/bot_runner |/stable_bot_runner |/smarter_bots |/reject_bot " ;;
+        bots) pattern="/${BOT_TYPE} " ;;
+        liquidity_bots) pattern="/bot_runner " ;;
         web_data) pattern="web_data 239" ;;
         homework_checker) pattern="server.py.*--port" ;;
         slack_bot) pattern="slack_bot.py" ;;
-        etf_service) pattern="etf_service/app.py" ;;
+        etf_service) pattern="etf_service/\.venv/.*app\.py" ;;
     esac
 
     if [[ -n "$pattern" ]]; then
@@ -343,11 +354,12 @@ stop_component() {
     case "$name" in
         matching_engine) pattern="/matching_engine " ;;
         md_snapshots) pattern="/md_snapshots " ;;
-        bots) pattern="/bot_runner |/stable_bot_runner |/smarter_bots |/reject_bot " ;;
+        bots) pattern="/${BOT_TYPE} " ;;
+        liquidity_bots) pattern="/bot_runner " ;;
         web_data) pattern="web_data 239" ;;
         homework_checker) pattern="server.py.*--port" ;;
         slack_bot) pattern="slack_bot.py" ;;
-        etf_service) pattern="etf_service/app.py" ;;
+        etf_service) pattern="etf_service/\.venv/.*app\.py" ;;
     esac
 
     if [[ -n "$pattern" ]]; then
@@ -432,6 +444,18 @@ resolve_binaries() {
         if [[ -z "$BOTS_BIN" ]]; then
             log_error "bots binary not found (build/bin or bots/out): ${BOT_TYPE}"
             exit 1
+        fi
+
+        # smarter_bots trades against the liquidity providers in bot_runner,
+        # so we need bot_runner alongside it.
+        if [[ "$BOT_TYPE" == "smarter_bots" ]]; then
+            LIQUIDITY_BOTS_BIN="$(find_executable \
+                "${BUILD_DIR}/bot_runner" \
+                "${SCRIPT_DIR}/bots/out/bot_runner")"
+            if [[ -z "$LIQUIDITY_BOTS_BIN" ]]; then
+                log_error "bot_runner binary not found (required as LP alongside smarter_bots)"
+                exit 1
+            fi
         fi
     fi
 
@@ -528,6 +552,14 @@ start_all() {
 
     # 3. Start Trading Bots
     if [[ "$START_BOTS" != "no" ]]; then
+        # smarter_bots trades against the bot_runner liquidity providers, so
+        # start the LP bots first.
+        if [[ "$BOT_TYPE" == "smarter_bots" ]]; then
+            start_component "liquidity_bots" "$LIQUIDITY_BOTS_BIN" "${SCRIPT_DIR}/bots" \
+                "$BIND_IP" "$OE_PORT" "$MCAST_IP" "$SNAPSHOT_MCAST_IP" "$MCAST_BIND_IP"
+            sleep 0.5
+        fi
+
         start_component "bots" "$BOTS_BIN" "${SCRIPT_DIR}/bots" \
             "$BIND_IP" "$OE_PORT" "$MCAST_IP" "$SNAPSHOT_MCAST_IP" "$MCAST_BIND_IP"
     fi
@@ -626,6 +658,7 @@ stop_all() {
     stop_component "homework_checker"
     stop_component "web_data"
     stop_component "bots"
+    stop_component "liquidity_bots"
     stop_component "md_snapshots"
     stop_component "matching_engine"
 
@@ -636,7 +669,7 @@ show_status() {
     echo "NDFEX System Status"
     echo "==================="
 
-    local components=("matching_engine" "md_snapshots" "bots" "web_data" "homework_checker" "slack_bot" "etf_service")
+    local components=("matching_engine" "md_snapshots" "liquidity_bots" "bots" "web_data" "homework_checker" "slack_bot" "etf_service")
 
     for comp in "${components[@]}"; do
         local running_pid=$(get_running_pid "$comp")
