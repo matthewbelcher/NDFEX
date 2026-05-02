@@ -3,6 +3,7 @@
 #include "spsc_md_queue.H"
 
 #include <spdlog/spdlog.h>
+#include <chrono>
 #include <cstdint>
 
 
@@ -33,6 +34,14 @@ private:
     SPSCMDQueue &queue;
 
     uint32_t last_seq_num = 0;
+
+    // Throttle state for bad-magic / bad-seq logging. Async spdlog queues
+    // these in memory; if they fire on every packet during a misroute the
+    // queue can grow unboundedly and OOM the process.
+    uint64_t bad_magic_suppressed = 0;
+    uint64_t bad_seq_suppressed = 0;
+    std::chrono::steady_clock::time_point bad_magic_window_start{};
+    std::chrono::steady_clock::time_point bad_seq_window_start{};
 
 };
 

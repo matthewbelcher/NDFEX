@@ -40,12 +40,16 @@ SnapshotClient::SnapshotClient(std::string ip, uint16_t port, std::string bind_i
         throw std::runtime_error("Failed to set SO_REUSEPORT");
     }
 
-    // bind mcast socket to bind_ip
+    // Bind to the specific multicast group address (not INADDR_ANY) so the
+    // kernel only delivers packets destined to this group:port. The MD and
+    // SNAPSHOT feeds share port 12345 on different groups; binding to
+    // INADDR_ANY here lets snapshot-magic packets leak in via mcast loopback
+    // and triggers a runaway "Invalid magic number" error log.
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_addr.s_addr = inet_addr(ip.c_str());
 
     if (bind(mcast_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
         logger->error("Failed to bind socket: {}", strerror(errno));
@@ -81,16 +85,34 @@ void SnapshotClient::process() {
 
     uint8_t* buf_ptr = buf;
     size_t buf_len = len;
+    constexpr auto LOG_THROTTLE_WINDOW = std::chrono::seconds(1);
     while (buf_len > 0) {
         md::md_header* header = reinterpret_cast<md::md_header*>(buf_ptr);
         if (header->magic_number != md::MAGIC_NUMBER) {
-            logger->error("Invalid magic number: {}", static_cast<uint64_t>(header->magic_number));
+            auto now = std::chrono::steady_clock::now();
+            if (now - bad_magic_window_start >= LOG_THROTTLE_WINDOW) {
+                logger->error("Invalid magic number: {} (suppressed {} similar in last window)",
+                              static_cast<uint64_t>(header->magic_number),
+                              bad_magic_suppressed);
+                bad_magic_window_start = now;
+                bad_magic_suppressed = 0;
+            } else {
+                ++bad_magic_suppressed;
+            }
             return;
         }
 
         uint32_t seq_num = header->seq_num;
         if (seq_num != last_seq_num + 1 && last_seq_num != 0) {
-            logger->error("Out of order sequence number: {} (expected {})", seq_num, last_seq_num + 1);
+            auto now = std::chrono::steady_clock::now();
+            if (now - bad_seq_window_start >= LOG_THROTTLE_WINDOW) {
+                logger->error("Out of order sequence number: {} (expected {}, suppressed {} in last window)",
+                              seq_num, last_seq_num + 1, bad_seq_suppressed);
+                bad_seq_window_start = now;
+                bad_seq_suppressed = 0;
+            } else {
+                ++bad_seq_suppressed;
+            }
         }
 
         last_seq_num = seq_num;
