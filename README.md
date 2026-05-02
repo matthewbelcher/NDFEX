@@ -44,9 +44,18 @@ This project is intended for the course on High-Frequency Trading Technologies a
   - Clearing Publisher: Broadcasts trade/position data
 
 - **Bot Runner** (`bots/`): Simulated trading strategies
-  - `bot_runner`: Random walk fair value market makers and takers
+  - `bot_runner`: Random walk fair value market makers and takers; provides
+    UNDY ETF liquidity via a basket-aware market maker. Hosts an admin
+    command port (loopback TCP 1235) used to drive thin-market and
+    bear-regime events during the competition.
   - `stable_bot_runner`: Constant fair value bots for stable markets
-  - `smarter_bots`: Advanced strategies including imbalance and pressure takers
+  - `smarter_bots`: Advanced strategies including imbalance and pressure
+    takers. Trades against `bot_runner`, so `ndfex.sh start --bot-type
+    smarter_bots` co-launches a `bot_runner` instance as the LP.
+  - `reject_bot`: For testing order rejection scenarios.
+  - `rule_breaker`: Test bot that deliberately breaches the position
+    limit and PnL floor — used to verify the leaderboard's breach
+    indicators.
 
 - **Market Data** (`market_data/`): Market data snapshot service
   - Listens to multicast market data
@@ -54,9 +63,24 @@ This project is intended for the course on High-Frequency Trading Technologies a
 
 - **Viewer** (`viewer/`): Terminal-based market data viewer using FTXUI
 
-- **Web Data** (`web_data/`): WebSocket server for web-based dashboards
+- **Web Data** (`web_data/`): WebSocket server for web-based dashboards.
+  Tails `logs/etf_adjustments.log` to fold ETF create/redeem activity into
+  the leaderboard, and tracks competition rule breaches (per-symbol
+  position limit, aggregate PnL floor).
 
-- **Clearing Web App** (`clearing-web-app/`): Next.js web interface for clearing data
+- **Clearing Web App** (`clearing-web-app/`): Next.js leaderboard. Reads
+  the web_data WebSocket and surfaces per-team aggregates + breach badges.
+
+- **ETF Service** (`etf_service/`): Flask app exposing UNDY create/redeem
+  via REST. HTTP Basic Auth against `matching_engine/users.txt`; every
+  successful adjustment is appended to `logs/etf_adjustments.log` for
+  consumption by `web_data` and `scripts/replay_pnl.py`.
+
+- **Homework Checker** (`homework_checker/`): Student-facing TCP server
+  + Slack bot that grades order-book reconstruction assignments.
+
+- **Scripts** (`scripts/`): Day-of operations tooling — `replay_pnl.py`,
+  `team_position.py`, `rotate_logs.sh`, `disk_alarm.sh`. See [Operations](#operations).
 
 ## Prerequisites
 
@@ -187,6 +211,8 @@ After building, executables are located in `build/bin/`:
 | `bbo_printer` | BBO printer (optional) |
 | `pcap_printer` | PCAP printer (optional, Linux only) |
 | `web_data` | WebSocket server (optional) |
+| `rule_breaker` | Position-limit / PnL-floor breach test bot |
+| `print_snapshots` | Dump snapshot multicast to stdout |
 
 ### Clean Build
 
@@ -240,10 +266,11 @@ echo "99 test testuser" > matching_engine/users.txt
 
 | Bot Type | Description |
 |----------|-------------|
-| `bot_runner` | Random walk fair value market makers (default) |
+| `bot_runner` | Random walk fair value market makers + UNDY basket LP (default) |
 | `stable_bot_runner` | Constant fair value bots for stable markets |
-| `smarter_bots` | Advanced strategies with imbalance/pressure takers |
+| `smarter_bots` | Advanced strategies with imbalance/pressure takers (auto-launches `bot_runner` as LP) |
 | `reject_bot` | For testing order rejection scenarios |
+| `rule_breaker` | Deliberately breaches position-limit and PnL-floor competition rules |
 
 ### Manual Startup
 
@@ -318,21 +345,101 @@ npm run dev
 
 The exchange supports the following symbols by default:
 
-| Symbol ID | Name | Tick Size | Min Qty | Max Qty | Max Price |
-|-----------|------|-----------|---------|---------|-----------|
-| 1 | GOLD | 10 | 1 | 1000 | 10000000 |
-| 2 | BLUE | 5 | 1 | 1000 | 10000000 |
+| Symbol ID | Name | Tick Size | Min Qty | Max Qty | Max Price | Notes |
+|-----------|------|-----------|---------|---------|-----------|-------|
+| 1 | GOLD | 10 | 1 | 1000 | 10000000 | Stand-alone |
+| 2 | BLUE | 5 | 1 | 1000 | 10000000 | Stand-alone |
+| 3 | KNAN | 5 | 1 | 1000 | 10000000 | UNDY component (Notre Dame dorm) |
+| 4 | STED | 5 | 1 | 1000 | 10000000 | UNDY component |
+| 5 | FISH | 5 | 1 | 1000 | 10000000 | UNDY component |
+| 6 | DILN | 5 | 1 | 1000 | 10000000 | UNDY component |
+| 7 | SORN | 5 | 1 | 1000 | 10000000 | UNDY component |
+| 8 | RYAN | 5 | 1 | 1000 | 10000000 | UNDY component |
+| 9 | LYON | 5 | 1 | 1000 | 10000000 | UNDY component |
+| 10 | WLSH | 5 | 1 | 1000 | 10000000 | UNDY component |
+| 11 | LEWI | 5 | 1 | 1000 | 10000000 | UNDY component |
+| 12 | BDIN | 5 | 1 | 1000 | 10000000 | UNDY component |
+| 13 | UNDY | 10 | 1 | 1000 | 10000000 | ETF; basket of symbols 3–12 |
+
+UNDY is a 1:1:…:1 basket of the ten dorm components. Create/redeem is
+handled out-of-band by the ETF service (see [ETF Service](#etf-service))
+— it does not trade on the matching engine; positions are settled via
+an adjustment log shared with `web_data` and `scripts/replay_pnl.py`.
 
 ## Network Configuration
 
 | Service | Protocol | Default Port |
 |---------|----------|--------------|
 | Order Entry | TCP | 1234 |
+| LP Admin Command Port | TCP (loopback only) | 1235 |
 | Market Data Multicast | UDP | 12345 |
 | Clearing Multicast | UDP | 12346 |
 | Market Data Snapshot | TCP | 12345 |
 | Web Data WebSocket | TCP | 9002 |
+| ETF Service REST | HTTP | 5000 |
+| ETF Service WebSocket | TCP | 9003 |
 | Clearing Web App | HTTP | 3000 |
+
+## ETF Service
+
+UNDY shares are created and redeemed via a separate Flask service that
+runs alongside the matching engine.
+
+```bash
+# Started by ndfex.sh by default; manual run:
+cd etf_service && uv run app.py \
+    <md_mcast_ip> <clearing_mcast_ip> <mcast_bind_ip>
+```
+
+REST endpoints (all behind HTTP Basic Auth against
+`matching_engine/users.txt`):
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /create` | Body `{"amount": N}` — burn N of each UNDY component, mint N UNDY |
+| `POST /redeem` | Body `{"amount": N}` — burn N UNDY, mint N of each component |
+| `GET /whoami` | Identity bound to the current Basic Auth credentials |
+| `GET /positions/<client_id>` | Effective positions including ETF adjustments |
+| `GET /history` | Per-client create/redeem history |
+
+Successful create/redeem operations are appended to
+`logs/etf_adjustments.log` (one line per `(client_id, symbol, delta)`
+pair, format `<unix_ns> <op> <client_id> <symbol> <delta>`). `web_data`
+tails this file to fold ETF positions into the leaderboard, and
+`scripts/replay_pnl.py` reads it for end-of-day scoring.
+
+## Operator Events
+
+`bots/bot_runner` listens on `127.0.0.1:1235` for line-based admin
+commands. Two operator-fired competition events are wired up:
+
+```bash
+# Pause LP quoting, drain cancels, re-quote with random per-symbol FV jumps
+bots/thin_market_event.sh 60        # 60 s pause, default
+BOTS_THIN_SEED=42 bots/thin_market_event.sh 5  # reproducible drill
+
+# Directional down-drift overlay + sell-heavy taker bias for 25 minutes
+bots/bear_regime.sh                            # default 1500 s
+bots/bear_regime.sh 1800                       # 30 min
+BOTS_BEAR_DRIFT_PER_MIN=-2 BOTS_BEAR_SELL_BIAS=0.91 \
+  bots/bear_regime.sh 1800                     # harder bear
+```
+
+Both wrappers trap INT/TERM and always issue the corresponding END
+command, so an interrupted script does not leave the LP biased forever.
+For ad-hoc commands use `bots/lp_cmd.sh THIN_PAUSE`, `STATUS`, etc. —
+it speaks `/dev/tcp` so no `nc` dependency.
+
+## Operations
+
+`scripts/` holds the day-of tooling:
+
+| Script | Purpose |
+|--------|---------|
+| `replay_pnl.py` | Reconstruct per-client positions, volume, and PnL from `matching_engine/logs/ME_*` + `logs/etf_adjustments.log`, applying competition rules. Per-session CSVs + cross-session aggregate. Optional `--from`/`--to` window for the official scoring period. |
+| `team_position.py` | One-team variant for in-session "what's my authoritative position" lookups. |
+| `rotate_logs.sh` | Daily gzip of dated spdlog files (skips today's open file). |
+| `disk_alarm.sh` | cron-friendly disk + per-log-file size check; optional Slack DM via `SLACK_BOT_TOKEN` / `INSTRUCTOR_USER_ID` with a signature-based cooldown. |
 
 ## Lab Setup (Solarflare + Arista)
 
@@ -414,6 +521,9 @@ All components write logs to a `logs/` directory in their working directory:
 - `logs/bot_runner*` - Bot runner logs
 - `logs/viewer*` - Viewer logs
 - `logs/web_data*` - Web data server logs
+- `logs/etf_adjustments.log` - Append-only ETF create/redeem log (single
+  source of truth for non-fill position changes; consumed by `web_data`
+  and `scripts/replay_pnl.py`)
 
 ## Project Structure
 
@@ -429,13 +539,17 @@ NDFEX/
 ├── market_data/         # Market data snapshot service
 │   └── CMakeLists.txt
 ├── bots/                # Trading bot implementations
+│   ├── *.sh             # thin_market_event.sh, bear_regime.sh, lp_cmd.sh
 │   └── CMakeLists.txt
 ├── viewer/              # Terminal UI viewer
 │   └── CMakeLists.txt
-├── web_data/            # WebSocket server for web clients
+├── web_data/            # WebSocket server for web clients (C++ + websocketpp)
 │   └── CMakeLists.txt
-├── clearing-web-app/    # Next.js web dashboard
+├── clearing-web-app/    # Next.js web dashboard / leaderboard
 │   └── package.json
+├── etf_service/         # Flask service for UNDY create/redeem
+├── homework_checker/    # Student-facing order-book grader + Slack bot
+├── scripts/             # Operations tooling (replay_pnl, rotate_logs, etc.)
 ├── 3rdparty/spdlog/      # Logging library (git submodule)
 ├── 3rdparty/SPSCQueue/   # Lock-free queue library (git submodule)
 ├── 3rdparty/FTXUI/       # Terminal UI library (git submodule)
