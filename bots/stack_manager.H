@@ -50,6 +50,11 @@ class StackManager {
 
         void cancel_all_orders();
 
+        // Cancels up to `budget` open orders this call. Returns the count
+        // STILL OPEN after the call (so the bot_runner drain loop knows when
+        // it has finished cancelling).
+        size_t cancel_some_orders(size_t budget);
+
     private:
 
         template <typename SideOrders>

@@ -31,7 +31,8 @@ public:
     // variances is a vector of integers that will be added to the fair value to represent this
     //      bot's view of the market
     // symbols is a vector of symbol_definitions
-    // width_in_ticks is the number of ticks away from the fair value that the bot will place orders
+    // width_in_ticks is the number of ticks away from the fair value that the bot will place orders.
+    //      One value applied uniformly to every symbol (back-compat / convenience).
 
     FairValueMarketMaker(OEClient& oe, MDClient& md,
                          std::vector<FairValue*>& fv,
@@ -42,7 +43,26 @@ public:
                          uint32_t& last_order_id,
                          std::shared_ptr<spdlog::logger> logger);
 
+    // Per-symbol widths: widths_in_ticks[i] is applied to symbols[i]. Used to
+    // run a different spread on basket components / ETF symbol vs. stand-alone
+    // symbols inside a single MM instance. Sizes must match.
+    FairValueMarketMaker(OEClient& oe, MDClient& md,
+                         std::vector<FairValue*>& fv,
+                         std::vector<int32_t> variances,
+                         std::vector<symbol_definition> symbols,
+                         std::vector<uint32_t> widths_in_ticks,
+                         uint32_t quantity,
+                         uint32_t& last_order_id,
+                         std::shared_ptr<spdlog::logger> logger);
+
     void process();
+
+    // Cancels up to `budget` open orders this call (taken from the back of
+    // each bid/ask vector). Returns the count of orders STILL OPEN after the
+    // call. Caller (bot_runner thin-event drain loop) keeps invoking until
+    // every MM returns 0, so the cancel burst respects the OE rate gate
+    // instead of bursting past the matching engine's MAX_MSGS_PER_SECOND.
+    size_t cancel_some_open_orders(size_t budget);
 
 private:
 
@@ -53,7 +73,8 @@ private:
     std::vector<int32_t> variances;
     std::vector<symbol_definition> symbols;
 
-    const uint32_t width_in_ticks;
+    // Parallel to symbols: widths_in_ticks[i] applies to symbols[i].
+    const std::vector<uint32_t> widths_in_ticks;
     const uint32_t quantity;
 
     uint64_t last_order_send_ts{0};

@@ -120,11 +120,29 @@ namespace ndfex::bots {
       logger->info("Canceling order {} at price {} for side bid", order.order_id, order.price);
       oe.cancel_order(order.order_id);
     }
+    bid_orders.clear();
 
     for (const auto& order : ask_orders) {
-      logger->info("Canceling order {} at price {} for side bid", order.order_id, order.price);
+      logger->info("Canceling order {} at price {} for side ask", order.order_id, order.price);
       oe.cancel_order(order.order_id);
     }
+    ask_orders.clear();
+  }
+
+  size_t StackManager::cancel_some_orders(size_t budget) {
+    while (!bid_orders.empty() && budget > 0) {
+      auto it = bid_orders.begin();
+      oe.cancel_order(it->order_id);
+      bid_orders.erase(it);
+      --budget;
+    }
+    while (!ask_orders.empty() && budget > 0) {
+      auto it = ask_orders.begin();
+      oe.cancel_order(it->order_id);
+      ask_orders.erase(it);
+      --budget;
+    }
+    return bid_orders.size() + ask_orders.size();
   }
 
 } // namespace ndfex::bots
