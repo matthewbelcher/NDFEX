@@ -277,8 +277,18 @@ namespace ndfex {
         }
 
         if (it->second->price == price && it->second->side == side) {
-            // price has not changed
-            it->second->quantity = quantity;
+            // Same-price, same-side modify. We store the *remaining* size in
+            // it->second->quantity (matching the rest of the code, where
+            // order->quantity is decremented by partial fills and consulted
+            // directly by match()). Storing the gross modify payload here
+            // would let a later aggressor pull more shares out of the book
+            // than were ever advertised on the wire — see the
+            // ModifyUpAfterPartialFillCreatesPhantomLiquidity test.
+            //
+            // The line-274 short-circuit above guarantees
+            // quantity > it->second->filled_quantity, so the subtraction
+            // below cannot underflow.
+            it->second->quantity = quantity - it->second->filled_quantity;
             subscriber->onModifyOrder(order_id, symbol, side, quantity - it->second->filled_quantity, price);
             return;
         }

@@ -704,6 +704,57 @@ TEST(OrderLadderBugTest, FilledQuantityNotAccumulated) {
     EXPECT_EQ(std::get<2>(subscriber.modified_orders[0]), 10);
 }
 
+// BUG: same-price modify after partial fill creates "phantom liquidity".
+// modify_order() sets order->quantity to the gross modify payload but
+// filled_quantity stays separate, so the match function (which uses
+// order->quantity) will fill more than the publicly displayed remaining.
+//
+// Real-world incident (UNDY 2026-04-28 02:15:14): client 11 sold qty=2,
+// got a 1-lot partial fill (remaining=1), then sent a same-price modify
+// "qty=2". MD published "remaining=1" but a later aggressor crossed the
+// spread and the matching engine handed it 2 lots out of a "1-lot" book.
+// The snapshot writer's TRADE handler then bailed (`it->quantity (1) <
+// payload.quantity (2)`) and left a phantom 1-lot ask on every published
+// snapshot for the rest of the day, crossing the visible book.
+TEST(OrderLadderBugTest, ModifyUpAfterPartialFillCreatesPhantomLiquidity) {
+    MockSubscriber subscriber;
+    ndfex::OrderLadder<MockSubscriber> orderLadder(&subscriber, 1337);
+
+    // Resting SELL 10 at 50.
+    orderLadder.new_order(1, ndfex::md::SIDE::SELL, 10, 50, 0);
+
+    // Aggressor BUY 3 at 50 → order 1 partial-fills, remaining 7.
+    orderLadder.new_order(2, ndfex::md::SIDE::BUY, 3, 50, 0);
+
+    // Same-price, same-side modify "back to" 10. The published remaining
+    // must be 10 - 3 = 7.
+    subscriber.modified_orders.clear();
+    orderLadder.modify_order(1, ndfex::md::SIDE::SELL, 10, 50);
+    ASSERT_EQ(subscriber.modified_orders.size(), 1);
+    EXPECT_EQ(std::get<2>(subscriber.modified_orders[0]), 7);
+
+    // Now an aggressor BUY 10 at 50 must fill exactly 7 from order 1
+    // (the displayed remaining) and leave 3 lots resting on the BUY side.
+    // Today this fails: the matcher uses order->quantity = 10 (gross) and
+    // hands the aggressor 10 lots out of a "7-lot" book.
+    subscriber.trades.clear();
+    subscriber.fills.clear();
+    subscriber.new_orders.clear();
+    orderLadder.new_order(3, ndfex::md::SIDE::BUY, 10, 50, 0);
+
+    ASSERT_EQ(subscriber.trades.size(), 1);
+    EXPECT_EQ(std::get<0>(subscriber.trades[0]), 1);  // hit order 1
+    EXPECT_EQ(std::get<1>(subscriber.trades[0]), 7);  // for 7 lots — not 10
+    EXPECT_EQ(std::get<2>(subscriber.trades[0]), 50);
+
+    // Aggressor BUY 3 should rest at 50 (10 wanted - 7 traded = 3 left).
+    ASSERT_EQ(subscriber.new_orders.size(), 1);
+    EXPECT_EQ(std::get<0>(subscriber.new_orders[0]), 3);
+    EXPECT_EQ(std::get<1>(subscriber.new_orders[0]), ndfex::md::SIDE::BUY);
+    EXPECT_EQ(std::get<2>(subscriber.new_orders[0]), 3);
+    EXPECT_EQ(std::get<3>(subscriber.new_orders[0]), 50);
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
