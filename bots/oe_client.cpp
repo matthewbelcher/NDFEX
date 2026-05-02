@@ -261,7 +261,6 @@ void OEClient::process() {
                 }
                 oe::error_message err = *reinterpret_cast<oe::error_message*>(buffer.data());
                 logger->error("Received error message: {}", reinterpret_cast<char*>(err.error_message));
-                throw std::runtime_error("Received error message " + std::string(reinterpret_cast<char*>(err.error_message)));
                 break;
             }
             default:
