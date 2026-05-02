@@ -43,8 +43,19 @@ int main(int argc, char* argv[]) {
     }
 
     std::vector<symbol_definition> symbols = {
-        {1, 10, 1, 1000, 10000000, 0}, // GOLD
-        {2, 5, 1, 1000, 10000000, 0}, // BLUE
+        {1, 10, 1, 1000, 10000000, 0},  // GOLD
+        {2, 5, 1, 1000, 10000000, 0},   // BLUE
+        {3, 5, 1, 1000, 10000000, 0},   // KNAN
+        {4, 5, 1, 1000, 10000000, 0},   // STED
+        {5, 5, 1, 1000, 10000000, 0},   // FISH
+        {6, 5, 1, 1000, 10000000, 0},   // DILN
+        {7, 5, 1, 1000, 10000000, 0},   // SORN
+        {8, 5, 1, 1000, 10000000, 0},   // RYAN
+        {9, 5, 1, 1000, 10000000, 0},   // LYON
+        {10, 5, 1, 1000, 10000000, 0},  // WLSH
+        {11, 5, 1, 1000, 10000000, 0},  // LEWI
+        {12, 5, 1, 1000, 10000000, 0},  // BDIN
+        {13, 10, 1, 1000, 10000000, 0}, // UNDY
     };
 
     // create market data client
@@ -53,7 +64,8 @@ int main(int argc, char* argv[]) {
 
     uint32_t last_order_id = 1;
 
-    ndfex::bots::ImbalanceTaker imbalance_taker(client1, md_client, symbols, 40, {200, 400}, last_order_id, logger);
+    ndfex::bots::ImbalanceTaker imbalance_taker(client1, md_client, symbols, 40,
+        {200, 400, 300, 300, 300, 300, 300, 300, 300, 300, 300, 300, 250}, last_order_id, logger);
 
     ndfex::bots::PressureTaker pressure_taker(client1, md_client, symbols, 5, last_order_id, logger);
 
@@ -63,6 +75,10 @@ int main(int argc, char* argv[]) {
     while (true) {
         client1.process();
         md_client.process();
+
+        if (!client1.can_send()) {
+            continue;
+        }
 
         imbalance_taker.process();
         pressure_taker.process();

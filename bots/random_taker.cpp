@@ -20,8 +20,10 @@ void RandomTaker::process() {
         return;
     }
 
+    std::uniform_real_distribution<double> uni(0.0, 1.0);
     for (const auto& symbol : symbols) {
-        if (rand() % 2 == 0) {
+        const bool sell = uni(gen) < sell_bias;
+        if (!sell) {
             logger->info("Sending buy order {} for {} at {}", last_order_id, symbol.symbol,
                  md.get_best_ask(symbol.symbol).price);
             oe.send_order(symbol.symbol, last_order_id, md::SIDE::BUY, quantity,
@@ -37,6 +39,12 @@ void RandomTaker::process() {
     }
 
     last_ts = ts + time_dist(gen);
+}
+
+void RandomTaker::set_sell_bias(double prob) {
+    if (prob < 0.0) prob = 0.0;
+    if (prob > 1.0) prob = 1.0;
+    sell_bias = prob;
 }
 
 } // namespace ndfex::bots

@@ -18,6 +18,7 @@ add_executable(bot_runner
     random_taker.cpp
     fair_value_stack_mm.cpp
     stack_manager.cpp
+    command_port.cpp
 )
 target_link_libraries(bot_runner Threads::Threads)
 
@@ -55,6 +56,13 @@ add_executable(smarter_bots
     resting_orders.cpp
 )
 target_link_libraries(smarter_bots Threads::Threads)
+
+# Rule Breaker test bot (deliberately triggers competition rule breaches)
+add_executable(rule_breaker
+    rule_breaker.cpp
+    ${BOT_COMMON_SOURCES}
+)
+target_link_libraries(rule_breaker Threads::Threads)
 
 # Print Snapshots utility
 add_executable(print_snapshots

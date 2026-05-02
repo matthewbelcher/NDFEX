@@ -23,15 +23,20 @@ namespace ndfex::bots {
 
         for (const auto& symbol : symbols) {
             if (side == md::SIDE::BUY) {
+                auto bid = md.get_best_bid(symbol.symbol);
+                if (bid.quantity == 0) continue;
+                int32_t price = bid.price - 3 * symbol.tick_size;
+                if (price <= 0) continue;
                 logger->info("RestingOrders: Sending buy order {} for {} qty {} at {}", last_order_id, symbol.symbol,
-                    quantity, md.get_best_bid(symbol.symbol).price - 3 * symbol.tick_size);
-                oe.send_order(symbol.symbol, last_order_id, side, quantity,
-                    md.get_best_bid(symbol.symbol).price - 3 * symbol.tick_size, 0);
+                    quantity, price);
+                oe.send_order(symbol.symbol, last_order_id, side, quantity, price, 0);
             } else {
+                auto ask = md.get_best_ask(symbol.symbol);
+                if (ask.quantity == 0) continue;
+                int32_t price = ask.price + 3 * symbol.tick_size;
                 logger->info("RestingOrders: Sending sell order {} for {} qty {} at {}", last_order_id, symbol.symbol,
-                    quantity, md.get_best_ask(symbol.symbol).price + 3 * symbol.tick_size);
-                oe.send_order(symbol.symbol, last_order_id, side, quantity,
-                    md.get_best_ask(symbol.symbol).price + 3 * symbol.tick_size, 0);
+                    quantity, price);
+                oe.send_order(symbol.symbol, last_order_id, side, quantity, price, 0);
             }
             last_order_id++;
         }

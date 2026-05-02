@@ -28,16 +28,19 @@ void PressureTaker::process() {
 
     for (const auto& symbol : symbols) {
         if (pressure_side == md::SIDE::BUY) {
+            auto ask = md.get_best_ask(symbol.symbol);
+            if (ask.quantity == 0) { last_order_id++; continue; }
             logger->info("PressureTaker: Sending buy order {} for {} qty {} at {} remaining {}", last_order_id, symbol.symbol,
-                quantity, md.get_best_ask(symbol.symbol).price, pressure_quantity);
+                quantity, ask.price, pressure_quantity);
             oe.send_order(symbol.symbol, last_order_id, pressure_side, quantity,
-                md.get_best_ask(symbol.symbol).price, static_cast<uint8_t>(oe::ORDER_FLAGS::IOC));
+                ask.price, static_cast<uint8_t>(oe::ORDER_FLAGS::IOC));
         } else {
+            auto bid = md.get_best_bid(symbol.symbol);
+            if (bid.quantity == 0) { last_order_id++; continue; }
             logger->info("PressureTaker: Sending sell order {} for {} qty {} at {} remaining {}", last_order_id, symbol.symbol,
-                quantity, md.get_best_bid(symbol.symbol).price, pressure_quantity);
-
+                quantity, bid.price, pressure_quantity);
             oe.send_order(symbol.symbol, last_order_id, pressure_side, quantity,
-                md.get_best_bid(symbol.symbol).price, static_cast<uint8_t>(oe::ORDER_FLAGS::IOC));
+                bid.price, static_cast<uint8_t>(oe::ORDER_FLAGS::IOC));
         }
         pressure_quantity -= quantity;
         last_order_id++;
