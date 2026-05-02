@@ -65,3 +65,8 @@ CMakeCache.txt
 CMakeFiles/
 bin/
 cmake_install.cmake
+
+# Secrets — never commit credentials. .env.example files are fine.
+.env
+*.env
+!*.env.example
