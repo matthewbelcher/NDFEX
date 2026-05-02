@@ -348,6 +348,10 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
 
                 //logger->info("Seq {} Delete order: order_id={} symbol={}", header->seq_num, delete_order->order_id, symbol);
                 symbol_to_order_book[symbol]->delete_order(delete_order->order_id);
+                // Drop the order_id->symbol mapping; otherwise this map
+                // grows unbounded and becomes a multi-GB leak after a few
+                // hours of trading.
+                order_to_symbol.erase(delete_order->order_id);
                 break;
             }
             case md::MSG_TYPE::MODIFY_ORDER: {
@@ -384,7 +388,13 @@ void MDClient::process_message(uint8_t* buf, size_t len) {
                     return;
                 }
     //            logger->info("Trade: order_id={}, quantity={}, price={}", trade->order_id, trade->quantity, trade->price);
-                symbol_to_order_book[symbol]->order_trade(trade->order_id, trade->quantity, trade->price);
+                if (symbol_to_order_book[symbol]->order_trade(trade->order_id, trade->quantity, trade->price)) {
+                    // Order was fully consumed by this trade — the matching
+                    // engine doesn't publish a separate DELETE_ORDER on
+                    // full-match, so this is the only place to drop the
+                    // mapping.
+                    order_to_symbol.erase(trade->order_id);
+                }
                 break;
             }
             case md::MSG_TYPE::TRADE_SUMMARY: {

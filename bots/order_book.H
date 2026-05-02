@@ -33,7 +33,11 @@ public:
 
     void modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity, int32_t price);
 
-    void order_trade(uint64_t order_id, uint32_t quantity, int32_t price);
+    // Returns true iff the trade fully consumed the order (it has been
+    // removed from the book). Callers that keep their own order_id->X
+    // lookups (e.g. MDClient::order_to_symbol) should erase their entry
+    // when this returns true to avoid an unbounded leak.
+    bool order_trade(uint64_t order_id, uint32_t quantity, int32_t price);
 
     PriceLevel get_best_bid() const;
     PriceLevel get_best_ask() const;

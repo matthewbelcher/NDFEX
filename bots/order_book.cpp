@@ -120,36 +120,40 @@ void OrderBook::modify_order(uint64_t order_id, md::SIDE side, uint32_t quantity
     it->second.side = side;
 }
 
-void OrderBook::order_trade(uint64_t order_id, uint32_t quantity, int32_t price) {
+bool OrderBook::order_trade(uint64_t order_id, uint32_t quantity, int32_t price) {
     (void)price;
     auto it = orders.find(order_id);
     if (it == orders.end()) {
         logger->warn("Trade Order {} not found", order_id);
-        return;
+        return false;
     }
 
     auto& order = it->second;
     if (order.quantity < quantity) {
         logger->warn("Order {} has less quantity than trade", order_id);
-        return;
+        return false;
     }
 
     //logger->info("Order {} traded {} at price {}", order_id, quantity, price);
 
     order.quantity -= quantity;
     if (order.quantity == 0) {
+        // Capture side/price before we invalidate the iterator.
+        const md::SIDE side = order.side;
+        const int32_t order_price = order.price;
         orders.erase(it);
-        if (md::SIDE::BUY == order.side) {
-            buy_levels[order.price] -= quantity;
-            if (buy_levels[order.price] == 0) {
-                buy_levels.erase(order.price);
+        if (md::SIDE::BUY == side) {
+            buy_levels[order_price] -= quantity;
+            if (buy_levels[order_price] == 0) {
+                buy_levels.erase(order_price);
             }
         } else {
-            sell_levels[order.price] -= quantity;
-            if (sell_levels[order.price] == 0) {
-                sell_levels.erase(order.price);
+            sell_levels[order_price] -= quantity;
+            if (sell_levels[order_price] == 0) {
+                sell_levels.erase(order_price);
             }
         }
+        return true;
     } else {
         if (md::SIDE::BUY == order.side) {
             buy_levels[order.price] -= quantity;
@@ -159,6 +163,7 @@ void OrderBook::order_trade(uint64_t order_id, uint32_t quantity, int32_t price)
             //print_levels(sell_levels);
         }
     }
+    return false;
 }
 
 OrderBook::PriceLevel OrderBook::get_best_bid() const {
