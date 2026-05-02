@@ -7,31 +7,49 @@ This is the authoritative source for positions including ETF conversions.
 
 import threading
 from collections import defaultdict
+from pathlib import Path
 from typing import Dict, Tuple, List, Optional
 
 from config import ETF_SYMBOL, UNDERLYING_SYMBOLS, SYMBOLS, get_ticker
 from clearing_client import ClearingClient
+from adjustment_log import AdjustmentLog
 
 
 class PositionLedger:
     """
     Tracks positions by combining:
     1. Real fills from clearing multicast (via ClearingClient)
-    2. ETF create/redeem adjustments (tracked locally)
-    
+    2. ETF create/redeem adjustments (persisted to adjustment_log)
+
+    The adjustment log is shared with web_data, which tails it to apply the
+    same position deltas to its leaderboard view. It also gives us free
+    recovery: on startup we replay the log to rebuild _etf_adjustments.
+
     Thread-safe for concurrent access.
     """
 
-    def __init__(self, clearing_client: ClearingClient):
+    def __init__(self, clearing_client: ClearingClient, log_path: Optional[Path] = None):
         self.clearing = clearing_client
-        
+
         # ETF adjustments: {client_id: {symbol: adjustment}}
         # Positive = credited, Negative = debited
         self._lock = threading.Lock()
         self._etf_adjustments: Dict[int, Dict[int, int]] = defaultdict(lambda: defaultdict(int))
-        
+
         # Track create/redeem history for auditing
         self._history: List[Dict] = []
+
+        # Open the persistent adjustment log for append. We deliberately do
+        # NOT replay prior entries on startup: our ClearingClient only sees
+        # fills from now forward, so applying historical adjustments on top
+        # of a fresh clearing state produces nonsensical effective positions.
+        # Live state resets on restart, matching the matching engine's own
+        # restart semantics ("positions reset to 0; PnL preserved" — see
+        # docs/competition_rules.py §6). The persistent log retains its
+        # value for offline replay (replay_pnl.py).
+        self._adjustment_log: Optional[AdjustmentLog] = None
+        if log_path is not None:
+            self._adjustment_log = AdjustmentLog(log_path)
 
     def get_position(self, client_id: int, symbol: int) -> int:
         """
@@ -79,17 +97,23 @@ class PositionLedger:
             if insufficient:
                 return False, f"Insufficient positions: {', '.join(insufficient)}"
             
-            # Apply adjustments
+            # Apply adjustments (in-memory + persistent log so web_data sees
+            # the deltas). The log append is per-component so the consumer
+            # is dumb — just sums signed deltas into positions.
             for symbol in UNDERLYING_SYMBOLS:
                 self._etf_adjustments[client_id][symbol] -= amount
+                if self._adjustment_log is not None:
+                    self._adjustment_log.append("create", client_id, symbol, -amount)
             self._etf_adjustments[client_id][ETF_SYMBOL] += amount
-            
+            if self._adjustment_log is not None:
+                self._adjustment_log.append("create", client_id, ETF_SYMBOL, amount)
+
             self._history.append({
                 "type": "create",
                 "client_id": client_id,
                 "amount": amount,
             })
-        
+
         return True, f"Created {amount} UNDY from underlying positions"
 
     def redeem_etf(self, client_id: int, amount: int) -> Tuple[bool, str]:
@@ -114,17 +138,22 @@ class PositionLedger:
             if undy_pos < amount:
                 return False, f"Insufficient UNDY: have {undy_pos}, need {amount}"
             
-            # Apply adjustments
+            # Apply adjustments (in-memory + persistent log; see create_etf
+            # comment for the rationale).
             self._etf_adjustments[client_id][ETF_SYMBOL] -= amount
+            if self._adjustment_log is not None:
+                self._adjustment_log.append("redeem", client_id, ETF_SYMBOL, -amount)
             for symbol in UNDERLYING_SYMBOLS:
                 self._etf_adjustments[client_id][symbol] += amount
-            
+                if self._adjustment_log is not None:
+                    self._adjustment_log.append("redeem", client_id, symbol, amount)
+
             self._history.append({
                 "type": "redeem",
                 "client_id": client_id,
                 "amount": amount,
             })
-        
+
         return True, f"Redeemed {amount} UNDY to underlying positions"
 
     def get_etf_adjustments(self, client_id: int) -> Dict[int, int]:

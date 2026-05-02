@@ -19,8 +19,9 @@ import sys
 import threading
 import time
 from functools import wraps
+from pathlib import Path
 
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, g, jsonify, request, render_template
 
 # Import with proper handling for running as main
 try:
@@ -32,6 +33,8 @@ try:
     from clearing_client import ClearingClient
     from md_client import MDClient
     from position_ledger import PositionLedger
+    import auth
+    from auth import UserStore, require_auth
 except ImportError:
     # Running from parent directory
     from etf_service.config import (
@@ -42,6 +45,11 @@ except ImportError:
     from etf_service.clearing_client import ClearingClient
     from etf_service.md_client import MDClient
     from etf_service.position_ledger import PositionLedger
+    from etf_service import auth
+    from etf_service.auth import UserStore, require_auth
+
+DEFAULT_USERS_PATH = Path(__file__).resolve().parent.parent / "matching_engine" / "users.txt"
+DEFAULT_ADJUSTMENT_LOG_PATH = Path(__file__).resolve().parent.parent / "logs" / "etf_adjustments.log"
 
 # Try to import websockets, provide helpful error if missing
 try:
@@ -108,80 +116,83 @@ def get_position(client_id: int, symbol: int):
     })
 
 
-@app.route('/create', methods=['POST'])
-def create_etf():
+def _parse_etf_request():
+    """Shared parsing for /create and /redeem. Returns (amount, error_response).
+
+    The request is already authenticated, so client_id comes from g.client_id.
+    If a client_id appears in the body, it must match the authed user's.
     """
-    Create UNDY ETF shares from underlying positions.
-    
-    Request body:
-        {"client_id": int, "amount": int}
-    
-    Response:
-        {"success": bool, "message": str, "undy_balance": int}
-    """
-    data = request.get_json()
-    if not data:
-        return jsonify({"success": False, "message": "Missing JSON body"}), 400
-    
-    client_id = data.get("client_id")
+    data = request.get_json(silent=True) or {}
     amount = data.get("amount")
-    
-    if client_id is None or amount is None:
-        return jsonify({"success": False, "message": "Missing client_id or amount"}), 400
-    
+    if amount is None:
+        return None, (jsonify({"success": False, "message": "Missing amount"}), 400)
     try:
-        client_id = int(client_id)
         amount = int(amount)
     except (ValueError, TypeError):
-        return jsonify({"success": False, "message": "Invalid client_id or amount"}), 400
-    
-    success, message = ledger.create_etf(client_id, amount)
-    undy_balance = ledger.get_position(client_id, ETF_SYMBOL)
-    
-    status_code = 200 if success else 400
+        return None, (jsonify({"success": False, "message": "Invalid amount"}), 400)
+    body_cid = data.get("client_id")
+    if body_cid is not None:
+        try:
+            body_cid = int(body_cid)
+        except (ValueError, TypeError):
+            return None, (jsonify({"success": False, "message": "Invalid client_id"}), 400)
+        if body_cid != g.client_id:
+            return None, (jsonify({
+                "success": False,
+                "message": f"client_id {body_cid} does not match authenticated user (client_id={g.client_id})",
+            }), 403)
+    return amount, None
+
+
+@app.route('/create', methods=['POST'])
+@require_auth
+def create_etf():
+    """
+    Create UNDY ETF shares from underlying positions for the authenticated client.
+
+    Request body: {"amount": int}
+    Response:     {"success": bool, "message": str, "undy_balance": int}
+    """
+    amount, err = _parse_etf_request()
+    if err is not None:
+        return err
+
+    success, message = ledger.create_etf(g.client_id, amount)
+    undy_balance = ledger.get_position(g.client_id, ETF_SYMBOL)
     return jsonify({
         "success": success,
         "message": message,
         "undy_balance": undy_balance,
-    }), status_code
+    }), (200 if success else 400)
 
 
 @app.route('/redeem', methods=['POST'])
+@require_auth
 def redeem_etf():
     """
-    Redeem UNDY ETF shares back to underlying positions.
-    
-    Request body:
-        {"client_id": int, "amount": int}
-    
-    Response:
-        {"success": bool, "message": str, "undy_balance": int}
+    Redeem UNDY ETF shares back to underlying positions for the authenticated client.
+
+    Request body: {"amount": int}
+    Response:     {"success": bool, "message": str, "undy_balance": int}
     """
-    data = request.get_json()
-    if not data:
-        return jsonify({"success": False, "message": "Missing JSON body"}), 400
-    
-    client_id = data.get("client_id")
-    amount = data.get("amount")
-    
-    if client_id is None or amount is None:
-        return jsonify({"success": False, "message": "Missing client_id or amount"}), 400
-    
-    try:
-        client_id = int(client_id)
-        amount = int(amount)
-    except (ValueError, TypeError):
-        return jsonify({"success": False, "message": "Invalid client_id or amount"}), 400
-    
-    success, message = ledger.redeem_etf(client_id, amount)
-    undy_balance = ledger.get_position(client_id, ETF_SYMBOL)
-    
-    status_code = 200 if success else 400
+    amount, err = _parse_etf_request()
+    if err is not None:
+        return err
+
+    success, message = ledger.redeem_etf(g.client_id, amount)
+    undy_balance = ledger.get_position(g.client_id, ETF_SYMBOL)
     return jsonify({
         "success": success,
         "message": message,
         "undy_balance": undy_balance,
-    }), status_code
+    }), (200 if success else 400)
+
+
+@app.route('/whoami')
+@require_auth
+def whoami():
+    """Return the identity bound to the current Basic Auth credentials."""
+    return jsonify({"client_id": g.client_id, "name": g.user_name})
 
 
 @app.route('/history')
@@ -277,17 +288,26 @@ def main():
     parser.add_argument("mcast_bind_ip", help="Local interface IP for multicast")
     parser.add_argument("--rest-port", type=int, default=REST_PORT, help="REST API port")
     parser.add_argument("--ws-port", type=int, default=WEBSOCKET_PORT, help="WebSocket port")
-    
+    parser.add_argument("--users", type=Path, default=DEFAULT_USERS_PATH,
+                        help="users.txt file for create/redeem authentication")
+    parser.add_argument("--adjustment-log", type=Path, default=DEFAULT_ADJUSTMENT_LOG_PATH,
+                        help="path to the persistent ETF-adjustment log shared with web_data")
+
     args = parser.parse_args()
-    
+
+    user_store = UserStore(args.users)
+    auth.init(user_store)
+
     print("=" * 60)
     print("NDFEX ETF Service")
     print("=" * 60)
-    print(f"Market Data:  {args.md_mcast_ip}:{MD_MCAST_PORT}")
-    print(f"Clearing:     {args.clearing_mcast_ip}:{CLEARING_MCAST_PORT}")
-    print(f"Bind IP:      {args.mcast_bind_ip}")
-    print(f"REST API:     http://0.0.0.0:{args.rest_port}")
-    print(f"WebSocket:    ws://0.0.0.0:{args.ws_port}")
+    print(f"Market Data:    {args.md_mcast_ip}:{MD_MCAST_PORT}")
+    print(f"Clearing:       {args.clearing_mcast_ip}:{CLEARING_MCAST_PORT}")
+    print(f"Bind IP:        {args.mcast_bind_ip}")
+    print(f"REST API:       http://0.0.0.0:{args.rest_port}")
+    print(f"WebSocket:      ws://0.0.0.0:{args.ws_port}")
+    print(f"Users file:     {args.users} ({len(user_store)} users loaded)")
+    print(f"Adjustment log: {args.adjustment_log}")
     print("=" * 60)
     
     # Initialize clients
@@ -303,7 +323,7 @@ def main():
         bind_ip=args.mcast_bind_ip
     )
     
-    ledger = PositionLedger(clearing_client)
+    ledger = PositionLedger(clearing_client, log_path=args.adjustment_log)
     
     # Start multicast listeners
     clearing_client.start()

@@ -245,15 +245,12 @@
         <header>
             <h1>UNDY <span>ETF Service</span></h1>
             <p class="subtitle">Notre Dame Dorm Exchange-Traded Fund</p>
+            <p class="subtitle" id="whoami">not logged in</p>
         </header>
-        
+
         <div class="section">
             <h2>ETF Operations</h2>
             <div class="form-group">
-                <div class="form-field">
-                    <label for="client_id">Client ID</label>
-                    <input type="number" id="client_id" placeholder="e.g., 1" min="1">
-                </div>
                 <div class="form-field">
                     <label for="amount">Amount</label>
                     <input type="number" id="amount" placeholder="e.g., 10" min="1">
@@ -289,21 +286,49 @@
     
     <script>
         const API_BASE = '';  // Same origin
-        
-        async function createETF() {
-            const clientId = document.getElementById('client_id').value;
+        let authedClientId = null;
+
+        async function ensureAuth() {
+            // GETting /whoami triggers the browser's Basic Auth prompt; once the
+            // user enters credentials the browser caches them for the origin.
+            try {
+                const resp = await fetch('/whoami', {credentials: 'include'});
+                if (!resp.ok) {
+                    document.getElementById('whoami').textContent = 'login required';
+                    return null;
+                }
+                const data = await resp.json();
+                authedClientId = data.client_id;
+                document.getElementById('whoami').textContent =
+                    `logged in as ${data.name} (client ${data.client_id})`;
+                document.getElementById('lookup_client').value = data.client_id;
+                loadPositions();
+                return data.client_id;
+            } catch (err) {
+                document.getElementById('whoami').textContent = 'auth error: ' + err.message;
+                return null;
+            }
+        }
+
+        async function postEtfOp(endpoint) {
+            if (authedClientId === null) {
+                const cid = await ensureAuth();
+                if (cid === null) {
+                    showResult('Please log in first (refresh the page)', false);
+                    return;
+                }
+            }
             const amount = document.getElementById('amount').value;
-            
-            if (!clientId || !amount) {
-                showResult('Please enter client ID and amount', false);
+            if (!amount) {
+                showResult('Please enter an amount', false);
                 return;
             }
-            
             try {
-                const response = await fetch('/create', {
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({client_id: parseInt(clientId), amount: parseInt(amount)})
+                    credentials: 'include',
+                    body: JSON.stringify({amount: parseInt(amount)})
                 });
                 const data = await response.json();
                 showResult(data.message + ` (UNDY balance: ${data.undy_balance})`, data.success);
@@ -314,34 +339,12 @@
                 showResult('Error: ' + err.message, false);
             }
         }
-        
-        async function redeemETF() {
-            const clientId = document.getElementById('client_id').value;
-            const amount = document.getElementById('amount').value;
-            
-            if (!clientId || !amount) {
-                showResult('Please enter client ID and amount', false);
-                return;
-            }
-            
-            try {
-                const response = await fetch('/redeem', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({client_id: parseInt(clientId), amount: parseInt(amount)})
-                });
-                const data = await response.json();
-                showResult(data.message + ` (UNDY balance: ${data.undy_balance})`, data.success);
-                if (data.success) {
-                    loadPositions();
-                }
-            } catch (err) {
-                showResult('Error: ' + err.message, false);
-            }
-        }
-        
+
+        function createETF() { return postEtfOp('/create'); }
+        function redeemETF() { return postEtfOp('/redeem'); }
+
         async function loadPositions() {
-            const clientId = document.getElementById('lookup_client').value || document.getElementById('client_id').value;
+            const clientId = document.getElementById('lookup_client').value;
             if (!clientId) return;
             
             document.getElementById('lookup_client').value = clientId;
@@ -383,6 +386,9 @@
             el.textContent = message;
             el.className = 'result ' + (success ? 'success' : 'error');
         }
+
+        // Trigger Basic Auth prompt and bind the page to the authed user.
+        ensureAuth();
     </script>
 </body>
 </html>
