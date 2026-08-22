@@ -1,0 +1,142 @@
+Computer Networks
+
+Topics
+Layers and protocols
+Multicast
+TCP
+Programming networks
+Non-blocking I/O
+
+Some motivation
+I’m going to talk about the details of the protocols way more than you probably
+think is reasonable
+But there’s a good reason - HFT is probably the only place you would want to
+re-implement all of these yourself in userspace.
+Why? Because it is faster.
+I’ll talk about one of my first successes when we get to TCP
+
+What is a computer network?
+
+Circuits vs packets
+
+Topics we are covering
+
+Physical networking equipment
+
+Physical networking equipment
+
+Physical networking equipment
+
+Moving Up
+
+Protocols
+Agreed upon conventions for communicating
+In the internet world they are published as RFCs
+For example, RFC793 specifies how TCP works
+https://www.rfc-editor.org/rfc/rfc793
+The whole point of protocols is to allow anyone who follows the protocol to talk to
+anyone else who does - if you control everything you can do whatever you want
+
+Layer 2 (Data link layer, MAC)
+Officially called data link but everyone calls it L2 or MAC
+Mac means “medium access control”
+That is, it is a protocol that specifies when a computer can manipulate the
+“medium,” i.e. copper wires, fiber optic cables, or wireless frequencies
+
+Ethernet
+
+Ethernet
+
+Layer 2 Switching
+Switches maintain a table of MAC -> Port internally which allows them to send
+local packets to the right place
+Switches can also use the vlan tag to send packets (e.g. anything with vlan tag
+100 goes to port 9)
+Switches can also mirror traffic on ports to other ports
+
+Switch modes
+Store and forward vs cut-through
+S&F can do error checking but it is slower and requires the switch to buffer
+packets
+Cut-through can deliver broken packets but it is fastest
+
+Bottlenecks and buffers
+
+Moving Up
+
+Network layer (IPv4)
+Address individual computers across the entire Internet
+In HFT we are usually on a private subnet inaccessible from the Internet but we
+still need IP addresses
+
+IPv4
+
+IPv4
+
+Layer 3 Routing
+
+Address Resolution Protocol
+
+Moving Up
+
+Layer 4 - UDP
+
+Multicast UDP
+
+IGMP
+
+Multicast on Layer 2
+
+Converting multicast from IPv4 to MAC
+Mac is 48 bits
+IP address is 32 bits
+Take last 23 bits from IP
+Multicast IP range: 224.0.0.0 to 239.255.255.255
+First 25 bits are fixed from 01:00:53: plus one zero bit
+
+TCP
+Goal of TCP is to provide reliable packet transmission
+Adds a large number of features
+Connection
+Acknowledgement
+Retransmission
+Flow control
+
+Initiating a TCP connection
+
+Ending a TCP Connection
+FIN
+FIN-ACK
+or
+RST
+
+Retransmission
+What happens if there is a sequence number gap?
+When the receiver detects the gap, it sends another ack with the ack seq of the
+last received sequence
+When sender sees 3 duplicate acknowledgements it begins retransmission
+Then it will resend that packet
+
+Congestion window
+Negotiated when the connection is established
+Grows based on packet receive
+If in-flight bytes > window size we won’t send
+
+HFT and TCP
+Mostly TCP’s features are just problems for us
+Should never drop packets so we don’t need retransmission
+Even if we did do we still even want that order?
+On the other hand, we absolutely need to get all the fills
+We also don’t want any kind of limit on sending a packet right now
+
+Tools
+ethtool
+Tcpdump
+Wireshark
+Strace
+Onload
+
+Programming Networks
+Let’s build a multicast listener
+
+

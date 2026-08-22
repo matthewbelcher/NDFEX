@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NDFEX Bot Mix</title>
+<style>
+  @page { size: 13.333in 7.5in; margin: 0; }
+  html, body { margin: 0; padding: 0; font-family: "Helvetica Neue", Arial, sans-serif; color: #1a1a1a; background: #fff; }
+  .slide {
+    width: 13.333in;
+    height: 7.5in;
+    box-sizing: border-box;
+    padding: 0.6in 0.7in 0.5in 0.7in;
+    page-break-after: always;
+    position: relative;
+    overflow: hidden;
+  }
+  .slide:last-child { page-break-after: avoid; }
+  h1 {
+    font-size: 38pt;
+    font-weight: 700;
+    margin: 0 0 0.05in 0;
+    color: #0b3a5d;
+    letter-spacing: -0.01em;
+  }
+  h2 {
+    font-size: 24pt;
+    font-weight: 600;
+    margin: 0 0 0.18in 0;
+    color: #0b3a5d;
+    border-bottom: 2px solid #c7d8e6;
+    padding-bottom: 0.06in;
+  }
+  h3 {
+    font-size: 16pt;
+    font-weight: 600;
+    margin: 0.18in 0 0.06in 0;
+    color: #1f5d8a;
+  }
+  p, li { font-size: 14pt; line-height: 1.42; margin: 0.05in 0; }
+  ul { margin: 0.05in 0 0.1in 0.3in; padding: 0; }
+  ul ul { margin-top: 0.02in; }
+  code, pre, .mono {
+    font-family: "JetBrains Mono", "Menlo", "Monaco", monospace;
+    background: #f1f5f9;
+    border-radius: 3px;
+  }
+  code { padding: 1px 5px; font-size: 12pt; }
+  pre {
+    padding: 10pt 14pt;
+    font-size: 11pt;
+    line-height: 1.35;
+    overflow: hidden;
+    border-left: 3px solid #1f5d8a;
+    margin: 0.1in 0;
+  }
+  .footer {
+    position: absolute;
+    left: 0.7in; right: 0.7in; bottom: 0.3in;
+    font-size: 9pt;
+    color: #888;
+    display: flex;
+    justify-content: space-between;
+    border-top: 1px solid #e6e6e6;
+    padding-top: 0.08in;
+  }
+  .lede {
+    font-size: 17pt;
+    color: #555;
+    margin: 0.1in 0 0.2in 0;
+  }
+  .columns {
+    display: flex;
+    gap: 0.4in;
+    margin-top: 0.1in;
+  }
+  .col { flex: 1; }
+  table {
+    border-collapse: collapse;
+    margin: 0.1in 0;
+    font-size: 12pt;
+    width: 100%;
+  }
+  th, td {
+    text-align: left;
+    padding: 4pt 8pt;
+    border-bottom: 1px solid #d6d6d6;
+  }
+  th {
+    background: #eef3f7;
+    color: #0b3a5d;
+    font-weight: 600;
+  }
+  tr:nth-child(even) td { background: #fafbfc; }
+  .pill {
+    display: inline-block;
+    background: #1f5d8a;
+    color: white;
+    padding: 2pt 8pt;
+    border-radius: 10pt;
+    font-size: 10pt;
+    font-weight: 600;
+    margin-right: 6pt;
+    vertical-align: middle;
+  }
+  .pill.warn { background: #b6741b; }
+  .pill.ok { background: #2c7a3f; }
+  .key {
+    background: #fff7e0;
+    border-left: 3px solid #b6741b;
+    padding: 8pt 12pt;
+    margin: 0.1in 0;
+    font-size: 13pt;
+  }
+  .title-slide {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    background: linear-gradient(135deg, #0b3a5d 0%, #1f5d8a 100%);
+    color: white;
+  }
+  .title-slide h1 {
+    color: white;
+    font-size: 56pt;
+    margin: 0;
+  }
+  .title-slide .subtitle {
+    font-size: 22pt;
+    color: #d8e6f0;
+    margin: 0.15in 0 0.5in 0;
+    font-weight: 300;
+  }
+  .title-slide .meta {
+    font-size: 14pt;
+    color: #aac0d4;
+    border-top: 1px solid rgba(255,255,255,0.3);
+    padding-top: 0.15in;
+  }
+  .arch-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.2in;
+    margin-top: 0.15in;
+  }
+  .module {
+    border: 1px solid #c7d8e6;
+    border-radius: 6pt;
+    padding: 10pt 14pt;
+    background: #fafbfc;
+  }
+  .module h4 {
+    margin: 0 0 4pt 0;
+    color: #0b3a5d;
+    font-size: 14pt;
+  }
+  .module p { font-size: 11pt; margin: 2pt 0; }
+  .small { font-size: 11pt; color: #555; }
+</style>
+</head>
+<body>
+
+<!-- ============ Slide 1: Title ============ -->
+<section class="slide title-slide">
+  <h1>NDFEX Bot Mix</h1>
+  <div class="subtitle">What you're trading against, and how it behaves</div>
+  <div class="meta">Trading competition debrief · Spring 2026</div>
+</section>
+
+<!-- ============ Slide 2: The two bot processes ============ -->
+<section class="slide">
+  <h2>The two bot processes</h2>
+  <p class="lede">Every fill on the exchange has a counterparty. With ~13 student teams active, the dominant counterparties are not other students — they are these two house bots.</p>
+  <div class="columns">
+    <div class="col">
+      <h3>bot_runner &nbsp; <span class="pill">cid 99 · "test"</span></h3>
+      <p>The <strong>liquidity provider</strong>. Always quotes both sides on every symbol. This is the "house market maker" you're scalping when you fire IOCs.</p>
+      <ul>
+        <li>10 market-maker instances per symbol (7 generic + 3 dedicated UNDY)</li>
+        <li>1 stacker per symbol (inside-spread quote)</li>
+        <li>4–5 random-taker instances (low-rate noise flow)</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3>smarter_bots &nbsp; <span class="pill">cid 98 · "test2"</span></h3>
+      <p>The <strong>active participant</strong>. Doesn't quote — it generates directional flow and trades against whatever liquidity is available.</p>
+      <ul>
+        <li>PressureTaker — directional bursts</li>
+        <li>ImbalanceTaker — trend-following</li>
+        <li>RestingOrders — passive off-touch limits</li>
+        <li>RandomTaker — random side IOCs</li>
+      </ul>
+    </div>
+  </div>
+  <div class="key">Last session: cid 99 lost $7.2M and cid 98 won $6.7M. The system is designed for these two to push prices around — your job is to read what they're doing and trade accordingly.</div>
+  <div class="footer"><span>NDFEX Bot Mix</span><span>2 / 14</span></div>
+</section>
+
+<!-- ============ Slide 3: LP architecture overview ============ -->
+<section class="slide">
+  <h2>bot_runner architecture</h2>
+  <p class="lede">Every symbol gets the same stack of LP components. Each component has its own role in the BBO.</p>
+  <div class="arch-grid">
+    <div class="module">
+      <h4>RandomWalkFairValue (per dorm/GOLD/BLUE)</h4>
+      <p>The "true price" the LP is quoting around. Random walk that steps every 1–100 ms.</p>
+    </div>
+    <div class="module">
+      <h4>BasketFairValue (UNDY only)</h4>
+      <p>Sum of component touches (10 dorm bids on the bid side, 10 dorm asks on the ask side). Reactive to component BBO changes.</p>
+    </div>
+    <div class="module">
+      <h4>FairValueMarketMaker × 7 generic + 3 UNDY</h4>
+      <p>Quotes <code>bid = FV - W·tick</code>, <code>ask = FV + W·tick</code>, with per-MM variance offset and per-share position skew.</p>
+    </div>
+    <div class="module">
+      <h4>FairValueStackingMarketMaker (1 per symbol)</h4>
+      <p>Posts one tighter "stacker" quote 1 tick inside the BBO. Provides inside liquidity that beats the generic MMs to the touch.</p>
+    </div>
+  </div>
+  <div class="key">The BBO you actually see and trade against is usually the <strong>stacker</strong> on top of the generic MMs underneath. When the stacker gets hit, the generic MMs become the new BBO — usually 1 tick wider.</div>
+  <div class="footer"><span>NDFEX Bot Mix</span><span>3 / 14</span></div>
+</section>
+
+<!-- ============ Slide 4: RandomWalkFairValue ============ -->
+<section class="slide">
+  <h2>RandomWalkFairValue</h2>
+  <p class="lede">The fair-value clock for every non-basket symbol. Drives the LP's quotes for GOLD, BLUE, and the 10 dorms independently.</p>
+  <h3>How it moves</h3>
+  <ul>
+    <li>Random walk: at each step, FV moves uniformly in <code>[−tick/5, +tick/5]</code></li>
+    <li>Step interval: uniform <code>[1ms, 100ms]</code> — so ~10–20 FV updates per second</li>
+    <li>Bounded between <code>min_price + 5·tick</code> and <code>max_price − 5·tick</code></li>
+  </ul>
+  <h3>Implications you can act on</h3>
+  <ul>
+    <li><strong>FV updates are slow relative to your IOC.</strong> The LP doesn't re-price on every event — only when its own internal tick fires.</li>
+    <li><strong>FVs are independent across symbols.</strong> KNAN and DILN walk separately. UNDY's basket FV is the only thing tying them together.</li>
+    <li><strong>Bear-regime drift.</strong> The instructor can fire a directional drift overlay that adds a deterministic linear move on top of the random walk for a configurable duration.</li>
+  </ul>
+  <div class="footer"><span>NDFEX Bot Mix</span><span>4 / 14</span></div>
+</section>
+
+<!-- ============ Slide 5: BasketFairValue ============ -->
+<section class="slide">
+  <h2>BasketFairValue (UNDY)</h2>
+  <p class="lede">UNDY is structurally tied to its 10 dorm components. Its LP fair value is computed from the actual market touches, not a separate random walk.</p>
+  <h3>How it computes</h3>
+  <pre>bid_value(t) = sum over 10 dorms of best_bid(dorm)
+ask_value(t) = sum over 10 dorms of best_ask(dorm)
+LP_UNDY_bid  = bid_value − W·tick<sub>UNDY</sub>
+LP_UNDY_ask  = ask_value + W·tick<sub>UNDY</sub></pre>
+  <h3>Why this is structurally arb-resistant</h3>
+  <ul>
+    <li>By construction, <code>LP_UNDY_ask &gt; sum(component_bids)</code>. You cannot lift the LP's UNDY ask and immediately offset by selling the components — the cost exceeds the revenue by the LP spread.</li>
+    <li>Same in the other direction: hitting LP_UNDY_bid and lifting the components loses money.</li>
+  </ul>
+  <div class="key">There is also a small (0.01% of calls) <em>pricing-error injection</em> that briefly returns mid-sum instead of touch-sum. The intent is to leak occasional opportunities; in practice the leak is small and rarely arbable on its own.</div>
+  <div class="footer"><span>NDFEX Bot Mix</span><span>5 / 14</span></div>
+</section>
+
+<!-- ============ Slide 6: FairValueMarketMaker ============ -->
+<section class="slide">
+  <h2>FairValueMarketMaker</h2>
+  <p class="lede">The workhorse LP. 7 generic instances each quote every symbol, plus 3 dedicated UNDY instances. All share the same FV objects but apply per-MM offsets.</p>
+  <h3>Quoting formula</h3>
+  <pre>bid_fv = FV.bid_value() + variance[mm][sym] − position
+ask_fv = FV.ask_value() + variance[mm][sym] − position
+bid    = bid_fv − W·tick     (then snapped to tick grid)
+ask    = ask_fv + W·tick</pre>
+  <h3>Two key parameters</h3>
+  <ul>
+    <li><strong>Variance vector.</strong> Each MM has a different per-symbol offset, e.g. neutral / slightly bullish / contrarian. Different MMs end up at the BBO depending on which way the offsets line up.</li>
+    <li><strong>Position skew.</strong> When the MM has accumulated inventory, both bid and ask shift opposite to the position. Long → quotes drop. Short → quotes rise. Capped at <code>|position| ≤ 100</code>.</li>
+  </ul>
+  <div class="key">Position skew is the core mechanism that creates "momentum" in the LP's prices. Hitting one side repeatedly drives that MM short, which lifts both quotes — others can read this as a directional signal.</div>
+  <div class="footer"><span>NDFEX Bot Mix</span><span>6 / 14</span></div>
+</section>
+
+<!-- ============ Slide 7: Stackers ============ -->
+<section class="slide">
+  <h2>Stackers (FairValueStackingMarketMaker)</h2>
+  <p class="lede">One stacker per symbol. Quotes <strong>1 tick inside</strong> the prevailing BBO with small size. Usually IS the BBO.</p>
+  <h3>What this means in practice</h3>
+  <ul>
+    <li>The price you see at top-of-book is usually the stacker, not the generic MM</li>
+    <li>Stacker depth is small (typically 2 lots). Once you take the stacker, the next layer is the generic MM at <code>±W·tick</code> further out</li>
+    <li>For UNDY only: the stacker uses the BasketFairValue to stay outside the structural arb range. For dorms, GOLD, and BLUE: the stacker is BBO-anchored (not basket-aware)</li>
+  </ul>
+  <h3>Why it matters</h3>
+  <ul>
+    <li>Spread you observe ≠ spread you'd get for a large order — depth matters</li>
+    <li>The stacker re-quotes when the underlying BBO moves, so it's slightly faster than the generic MMs to react</li>
+  </ul>
+  <div class="footer"><span>NDFEX Bot Mix</span><span>7 / 14</span></div>
+</section>
+
+<!-- ============ Slide 8: PressureTaker ============ -->
+<section class="slide">
+  <h2>smarter_bots: PressureTaker</h2>
+  <p class="lede">Generates directional flow. The single most impactful component for prices on short timescales.</p>
+  <h3>Algorithm</h3>
+  <pre>1. Pick a random side (50% buy / 50% sell)
+2. Pick a random total quantity (1..100)
+3. Fire IOCs on that side every 200ms..10s
+4. When total quantity is exhausted, GOTO 1</pre>
+  <h3>What you observe</h3>
+  <ul>
+    <li>One-directional bursts of taker flow lasting seconds to a couple minutes</li>
+    <li>Each burst pushes the LP MM into inventory → the LP's position skew amplifies the move</li>
+    <li>When a burst exhausts, the next burst is independently random — half the time the direction reverses</li>
+  </ul>
+  <div class="key">This is the <strong>main source of intraday "trend"</strong> on the exchange. Reading order-flow from the trade tape and joining a burst early is a viable strategy. Exiting before the burst exhausts is the harder part.</div>
+  <div class="footer"><span>NDFEX Bot Mix</span><span>8 / 14</span></div>
+</section>
+
+<!-- ============ Slide 9: ImbalanceTaker ============ -->
+<section class="slide">
+  <h2>smarter_bots: ImbalanceTaker</h2>
+  <p class="lede">Watches trade-summary aggressor flow. Joins the dominant direction once it crosses a threshold.</p>
+  <h3>Algorithm</h3>
+  <pre>maintain  imbalance[sym]  =  sum of (signed) aggressor qty
+on each trade summary:
+    if aggressor was BUY:  imbalance[sym] += qty
+    else:                  imbalance[sym] -= qty
+every 100ms:
+    if  imbalance[sym] >  threshold[sym]:  fire BUY IOC, reset
+    if  imbalance[sym] < -threshold[sym]:  fire SELL IOC, reset</pre>
+  <h3>Effect on price action</h3>
+  <ul>
+    <li><strong>Trend amplifier.</strong> Once enough aggressive buying hits the tape, the ImbalanceTaker piles in on the buy side too — pushing the LP further short and accelerating the move</li>
+    <li>Different threshold per symbol (more sensitive on illiquid names)</li>
+    <li>Combined with PressureTaker, you get a feedback loop: PressureTaker creates the initial push, ImbalanceTaker amplifies it, LP skew carries it further</li>
+  </ul>
+  <div class="footer"><span>NDFEX Bot Mix</span><span>9 / 14</span></div>
+</section>
+
+<!-- ============ Slide 10: RestingOrders + RandomTaker ============ -->
+<section class="slide">
+  <h2>smarter_bots: RestingOrders &amp; RandomTaker</h2>
+  <div class="columns">
+    <div class="col">
+      <h3>RestingOrders</h3>
+      <p>Posts passive limit orders 3 ticks off the touch on a randomly-chosen side, every 0.5–10s.</p>
+      <pre>side = random()
+if BUY:  price = best_bid - 3·tick
+if SELL: price = best_ask + 3·tick</pre>
+      <p>These usually don't fill — they just add depth a few ticks back from BBO. When the market sweeps that level, you'll see large fills against cid 98.</p>
+    </div>
+    <div class="col">
+      <h3>RandomTaker</h3>
+      <p>Bursts of small, random-side IOC takes against the touch. Several instances run with different time scales (<code>10–500 ms</code> base, scaled).</p>
+      <pre>if random() &lt; sell_bias: SELL  IOC at best_bid
+else:                    BUY   IOC at best_ask</pre>
+      <p>The instructor can flip <code>sell_bias</code> from 0.5 to a sell-heavy regime (~0.85) for the bear-regime event.</p>
+    </div>
+  </div>
+  <div class="key">Neither of these is "smart" — they exist to add background noise and the occasional large resting fill. The directional logic lives in PressureTaker and ImbalanceTaker.</div>
+  <div class="footer"><span>NDFEX Bot Mix</span><span>10 / 14</span></div>
+</section>
+
+<!-- ============ Slide 11: Per-symbol parameters ============ -->
+<section class="slide">
+  <h2>Per-symbol setup</h2>
+  <p class="lede">Tick size, MM width, and starting fair value for each tradable symbol.</p>
+  <table>
+    <tr><th>Symbol</th><th>Name</th><th>Tick</th><th>Generic MM width</th><th>UNDY-only MM widths</th><th>Stacker width</th></tr>
+    <tr><td>1</td><td>GOLD</td><td>10</td><td>2 / 3 ticks</td><td>—</td><td>1 tick inside BBO</td></tr>
+    <tr><td>2</td><td>BLUE</td><td>5</td><td>2 / 3 ticks</td><td>—</td><td>1 tick inside BBO</td></tr>
+    <tr><td>3–12</td><td>10 dorm components</td><td>5</td><td>1 / 2 ticks</td><td>—</td><td>1 tick inside BBO</td></tr>
+    <tr><td>13</td><td>UNDY (ETF of dorms 3–12)</td><td>10</td><td>1 / 2 ticks</td><td>1, 2, 3 ticks (3 layers)</td><td>1 tick inside BBO (basket-aware)</td></tr>
+  </table>
+  <h3>UNDY mechanics</h3>
+  <ul>
+    <li>1 UNDY ≡ 1 share of each of the 10 dorms (KNAN, STED, FISH, DILN, SORN, RYAN, LYON, WLSH, LEWI, BDIN)</li>
+    <li>ETF service exposes <strong>create</strong> (give 10 dorms, get 1 UNDY) and <strong>redeem</strong> (give 1 UNDY, get 10 dorms) at zero cash</li>
+    <li>Conversions don't generate fills — they appear as position adjustments</li>
+  </ul>
+  <div class="footer"><span>NDFEX Bot Mix</span><span>11 / 14</span></div>
+</section>
+
+<!-- ============ Slide 12: Risk rules ============ -->
+<section class="slide">
+  <h2>Risk rules &amp; how they trip</h2>
+  <h3>Position limit</h3>
+  <ul>
+    <li>Per-symbol high-water-mark: <strong>10 lots</strong> (long or short)</li>
+    <li>Once you ever exceed it, that symbol is permanently flagged for the session</li>
+    <li>On the flagged symbol, any positive PnL is clamped to zero — you lose your gains there for the rest of the day</li>
+    <li><strong>Includes ETF adjustments.</strong> Redeeming UNDY adds to all 10 dorm positions in one event — manage your dorm inventory before redeeming</li>
+  </ul>
+  <h3>PnL drawdown freeze</h3>
+  <ul>
+    <li>If your live total PnL drops below the drawdown threshold, your score is <strong>frozen at that value</strong> for the rest of the session</li>
+    <li>The leaderboard shows <code>frozen_pnl (live_pnl)</code> — the parens are the would-have-been if the freeze hadn't fired</li>
+    <li>Position-limit clamps feed into total PnL, so a single bad redeem can cascade into the freeze</li>
+  </ul>
+  <div class="key">The freeze and clamp are independent. You can hit either or both. Most freeze events this week have been triggered indirectly: position clamp zeros positive PnL on multiple symbols → total drops below threshold → freeze fires.</div>
+  <div class="footer"><span>NDFEX Bot Mix</span><span>12 / 14</span></div>
+</section>
+
+<!-- ============ Slide 13: What strategies are working ============ -->
+<section class="slide">
+  <h2>What's been working (and what hasn't)</h2>
+  <div class="columns">
+    <div class="col">
+      <h3 style="color: #2c7a3f;">Working</h3>
+      <ul>
+        <li><strong>Per-symbol momentum scalping.</strong> Read PressureTaker bursts off the trade tape, join early with 1-lot IOCs, exit before the burst exhausts. ~1–2 ticks of edge per round trip after fees</li>
+        <li><strong>Inside-spread market making.</strong> Quote tighter than the LP stacker, collect spread when burst flow runs over you in your favor</li>
+        <li><strong>Disciplined risk management.</strong> Tight stops on losing trips (≤ 3 ticks) and asymmetric position sizing</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h3 style="color: #b6741b;">No longer working</h3>
+      <ul>
+        <li><strong>Static UNDY-vs-basket arb against LP.</strong> The basket-aware UNDY MM removed the structural edge. Component widths were also tightened</li>
+        <li><strong>Big ETF conversion bursts.</strong> Without rebalancing in between, redeems push dorms through the position limit and trip the freeze</li>
+        <li><strong>Holding directional inventory through volatility.</strong> The drawdown freeze fires on transient MTM swings, not just realized losses</li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer"><span>NDFEX Bot Mix</span><span>13 / 14</span></div>
+</section>
+
+<!-- ============ Slide 14: Takeaways ============ -->
+<section class="slide">
+  <h2>Takeaways for tomorrow</h2>
+  <ul>
+    <li><strong>The exchange is mostly bots talking to bots.</strong> ~80% of typical fills are against cid 99 (LP) or cid 98 (smarter_bots). Your edge comes from reading what they're doing</li>
+    <li><strong>There is no explicit mean reversion in any bot.</strong> The reversion you observe is emergent: PressureTaker bursts cycle direction at random, and the LP's position-skew cap limits one-way pushes</li>
+    <li><strong>Order flow is your signal.</strong> The trade tape — who's hitting which side, how aggressively — encodes everything that matters about the next few seconds of price action</li>
+    <li><strong>Risk rules are unforgiving.</strong> One bad redeem can wipe an entire session of legitimate trading PnL. Sequence your conversions to keep dorm positions ≤ <code>10 − redeem_size</code></li>
+    <li><strong>Tomorrow:</strong> we'll go through specific tape examples and let you replay your own bots against this mix</li>
+  </ul>
+  <div class="footer"><span>NDFEX Bot Mix</span><span>14 / 14</span></div>
+</section>
+
+</body>
+</html>
